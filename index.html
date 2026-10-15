@@ -1,0 +1,943 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FLP Mock Exam</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one centred console column. Sign-in first; then Practice / History / Leaderboard (plus Manage questions for admins). Exam mode takes over with a sticky timer bar and a side palette that stacks under the question on phones. */
+:root {
+  color-scheme: light;
+  --bg: #f2f5f9;
+  --surface: #ffffff;
+  --surface2: #e9eef5;
+  --line: #d2dae6;
+  --fg: #15202e;
+  --muted: #566377;
+  --accent: #14599a;
+  --accent-fg: #ffffff;
+  --accent-soft: #e1edfa;
+  --ok: #17692f;
+  --ok-soft: #dff2e4;
+  --warn: #8a5200;
+  --warn-soft: #fcefd2;
+  --bad: #b3261e;
+  --bad-soft: #fce6e3;
+  --font: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f151e;
+    --surface: #172030;
+    --surface2: #1e2a3c;
+    --line: #2d3b52;
+    --fg: #e6ebf3;
+    --muted: #9aa8bd;
+    --accent: #6aaeff;
+    --accent-fg: #08111f;
+    --accent-soft: #1b2e4a;
+    --ok: #6fd596;
+    --ok-soft: #163524;
+    --warn: #f0b44c;
+    --warn-soft: #3a2b0f;
+    --bad: #ff8f84;
+    --bad-soft: #3d1a17;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f151e;
+  --surface: #172030;
+  --surface2: #1e2a3c;
+  --line: #2d3b52;
+  --fg: #e6ebf3;
+  --muted: #9aa8bd;
+  --accent: #6aaeff;
+  --accent-fg: #08111f;
+  --accent-soft: #1b2e4a;
+  --ok: #6fd596;
+  --ok-soft: #163524;
+  --warn: #f0b44c;
+  --warn-soft: #3a2b0f;
+  --bad: #ff8f84;
+  --bad-soft: #3d1a17;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.5;
+  padding-block: max(20px, env(safe-area-inset-top, 0px)) 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+.wrap { max-width: 1040px; margin: 0 auto; }
+h1, h2, h3 { margin: 0; line-height: 1.25; text-wrap: balance; }
+h1 { font-size: 1.2rem; font-weight: 600; }
+h2 { font-size: 1.05rem; font-weight: 600; }
+h3 { font-size: .95rem; font-weight: 600; }
+p { margin: 0; }
+button, input, textarea, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; margin-bottom: 20px; }
+.brand p { color: var(--muted); font-size: .84rem; }
+.right { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.who { display: flex; gap: 10px; align-items: center; font-size: .85rem; color: var(--muted); }
+.nav { display: flex; flex-wrap: wrap; gap: 4px; background: var(--surface2); padding: 3px; border-radius: 8px; }
+.nav button { border: 0; background: transparent; color: var(--muted); padding: 7px 14px; border-radius: 6px; font-weight: 500; cursor: pointer; }
+.nav button[aria-current="page"] { background: var(--surface); color: var(--fg); box-shadow: 0 0 0 1px var(--line); }
+
+.stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 20px; min-width: 0; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 16px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.between { justify-content: space-between; }
+.sub { color: var(--muted); font-size: .88rem; }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.eyebrow { font-size: .75rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 600; }
+
+.lbl { display: block; font-weight: 500; font-size: .85rem; margin-bottom: 6px; }
+input[type=number], input[type=text], input[type=email], input[type=password], select, textarea {
+  background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; width: 100%; min-width: 0;
+}
+textarea { min-height: 240px; font-family: var(--mono); font-size: .84rem; line-height: 1.55; resize: vertical; }
+textarea.ro-box { min-height: 150px; }
+
+.btn { border: 1px solid var(--line); background: var(--surface); padding: 9px 16px; border-radius: 6px; cursor: pointer; font-weight: 500; }
+.btn:hover { background: var(--surface2); }
+.btn-primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.btn-primary:hover { background: var(--accent); filter: brightness(1.1); }
+.btn-danger { color: var(--bad); border-color: var(--bad); }
+.btn-sm { padding: 5px 10px; font-size: .82rem; }
+.btn[disabled] { opacity: .5; cursor: not-allowed; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-flex; gap: 7px; align-items: center; padding: 5px 11px; border: 1px solid var(--line); border-radius: 999px; cursor: pointer; background: var(--surface); font-size: .86rem; }
+.chip:has(input:checked) { background: var(--accent-soft); border-color: var(--accent); }
+.chip input { margin: 0; }
+.check { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+
+.stats { display: flex; flex-wrap: wrap; gap: 8px 32px; }
+.stat b { display: block; font-family: var(--mono); font-size: 1.45rem; font-weight: 500; line-height: 1.2; }
+.stat span { font-size: .74rem; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; }
+
+.notice { border: 1px solid var(--line); border-left: 4px solid var(--accent); background: var(--accent-soft); border-radius: 6px; padding: 12px 14px; }
+.notice.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+.empty { padding: 28px 22px; border: 1px dashed var(--line); border-radius: 8px; background: var(--surface); }
+.empty h2 { margin-bottom: 6px; }
+
+.authwrap { max-width: 420px; margin: 6vh auto 0; }
+.seg { display: flex; gap: 4px; background: var(--surface2); padding: 3px; border-radius: 8px; }
+.seg button { flex: 1; border: 0; background: transparent; color: var(--muted); padding: 7px 10px; border-radius: 6px; font-weight: 500; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--fg); box-shadow: 0 0 0 1px var(--line); }
+.msg { font-size: .88rem; }
+.msg.err { color: var(--bad); }
+.msg.ok { color: var(--ok); }
+ol.steps { margin: 8px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+code { font-family: var(--mono); font-size: .86em; background: var(--surface2); padding: 1px 5px; border-radius: 4px; }
+
+.pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: .74rem; font-weight: 600; letter-spacing: .03em; white-space: nowrap; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
+.pill.skip { background: var(--surface2); color: var(--muted); }
+.pill.flag { background: var(--warn-soft); color: var(--warn); }
+.pill.subj { background: var(--accent-soft); color: var(--accent); }
+
+.tbl-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+th, td { padding: 9px 10px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-size: .74rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+tr.me td { background: var(--accent-soft); }
+.bar { height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; min-width: 80px; }
+.bar i { display: block; height: 100%; background: var(--accent); }
+
+/* Exam */
+.exam-bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; display: flex; justify-content: space-between; align-items: center; gap: 10px 16px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; }
+.timer { font-family: var(--mono); font-size: 1.4rem; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.timer.low { color: var(--warn); }
+.timer.crit { color: var(--bad); }
+.exam-grid { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 16px; align-items: start; }
+@media (max-width: 820px) { .exam-grid { grid-template-columns: minmax(0, 1fr); } }
+.qhead { display: flex; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; color: var(--muted); font-size: .88rem; }
+.stem { font-size: 1.08rem; line-height: 1.6; margin-bottom: 18px; max-width: 70ch; overflow-wrap: anywhere; }
+.opts { display: flex; flex-direction: column; gap: 8px; }
+.opt { display: flex; gap: 12px; text-align: left; width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 11px 14px; cursor: pointer; align-items: flex-start; }
+.opt:hover { border-color: var(--accent); }
+.opt .l { flex: none; width: 1.8em; height: 1.8em; border: 1px solid var(--line); border-radius: 50%; display: grid; place-items: center; font-family: var(--mono); font-size: .8rem; background: var(--surface); }
+.opt .t { min-width: 0; overflow-wrap: anywhere; padding-top: 1px; }
+.opt[aria-checked="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.opt[aria-checked="true"] .l { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.qnav { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+.qnav .grow { flex: 1; }
+.btn.flagged { background: var(--warn-soft); border-color: var(--warn); color: var(--warn); }
+
+.pal-scroll { max-height: 50vh; overflow-y: auto; padding: 2px; }
+.pal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap: 6px; }
+.pal { position: relative; font-family: var(--mono); font-size: .82rem; padding: 8px 0; border-radius: 4px; border: 1px solid var(--line); background: var(--surface2); cursor: pointer; }
+.pal.ans { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); }
+.pal.flag::after { content: ""; position: absolute; top: -1px; right: -1px; border-style: solid; border-width: 0 12px 12px 0; border-color: transparent var(--warn) transparent transparent; }
+.pal.cur { outline: 2px solid var(--accent); outline-offset: 1px; font-weight: 600; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: .78rem; color: var(--muted); margin-top: 12px; }
+.sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--line); vertical-align: -1px; margin-right: 5px; background: var(--surface2); }
+.sw.ans { background: var(--ok-soft); border-color: var(--ok); }
+.sw.flag { background: var(--warn); border-color: var(--warn); }
+
+/* Result + review */
+.score { display: flex; flex-wrap: wrap; gap: 16px 40px; align-items: center; }
+.pct { font-family: var(--mono); font-size: 3.1rem; font-weight: 500; line-height: 1; }
+.ri { border-top: 1px solid var(--line); padding-top: 16px; margin-top: 16px; }
+.ri:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+.ro { display: flex; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; margin-top: 6px; align-items: flex-start; }
+.ro .t { min-width: 0; overflow-wrap: anywhere; }
+.ro .k { flex: none; font-family: var(--mono); width: 1.4em; }
+.ro .tag { margin-left: auto; flex: none; font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; padding-left: 8px; }
+.ro.correct { background: var(--ok-soft); border-color: var(--ok); }
+.ro.correct .tag { color: var(--ok); }
+.ro.wrong { background: var(--bad-soft); border-color: var(--bad); }
+.ro.wrong .tag { color: var(--bad); }
+.exp { margin-top: 12px; padding: 10px 12px; background: var(--surface2); border-radius: 6px; font-size: .9rem; overflow-wrap: anywhere; }
+
+.help pre { margin: 0; padding: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; overflow-x: auto; font-family: var(--mono); font-size: .82rem; line-height: 1.55; }
+details > summary { cursor: pointer; font-weight: 500; }
+.issues { margin: 8px 0 0; padding-left: 18px; color: var(--bad); font-size: .88rem; }
+.qrow { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--line); }
+.qrow:first-child { border-top: 0; }
+.qrow .qt { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.qrow .qn { flex: none; width: 2.6em; color: var(--muted); font-family: var(--mono); font-size: .82rem; padding-top: 2px; }
+.foot { margin-top: 24px; color: var(--muted); font-size: .8rem; }
+
+.toast { position: fixed; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 6px; max-width: calc(100% - 32px); z-index: 20; font-size: .9rem; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+<div class="wrap"><main id="app"></main></div>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script>
+(function () {
+'use strict';
+
+var LET = 'ABCDEF';
+function $(s, r) { return (r || document).querySelector(s); }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function nl(s) { return esc(s).replace(/\n/g, '<br>'); }
+function uuid() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  var b = new Uint8Array(16); crypto.getRandomValues(b);
+  b[6] = (b[6] & 15) | 64; b[8] = (b[8] & 63) | 128;
+  var h = Array.prototype.map.call(b, function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
+  return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20);
+}
+function shuffle(a) { a = a.slice(); for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
+function norm(s) { return String(s).toLowerCase().replace(/\s+/g, ' ').trim(); }
+
+//#parser-start
+function qStart(line) {
+  var m = line.match(/^\s*(?:q(?:uestion)?\s*\.?\s*)?(\d{1,4})\s*[\.\):\-]\s+(.+)$/i);
+  if (m) return m[2];
+  m = line.match(/^\s*q(?:uestion)?\s*[:\.\)\-]\s*(.+)$/i);
+  return m ? m[1] : null;
+}
+function fromJSON(data, defTag) {
+  var arr = Array.isArray(data) ? data : (data && data.questions) || [];
+  var items = [], issues = [];
+  arr.forEach(function (r, i) {
+    var q = r.question || r.q || r.stem || '';
+    var o = r.options || r.choices || r.o || [];
+    var a = r.answer != null ? r.answer : (r.correct != null ? r.correct : r.a);
+    var idx = -1;
+    if (typeof a === 'number') idx = a;
+    else if (typeof a === 'string') {
+      var L = LET.indexOf(a.trim().toUpperCase());
+      idx = (a.trim().length === 1 && L >= 0) ? L : o.findIndex(function (x) { return norm(x) === norm(a); });
+    }
+    if (!q || o.length < 2 || idx < 0 || idx >= o.length) { issues.push('Item ' + (i + 1) + ': needs a question, at least 2 options and a valid answer.'); return; }
+    items.push({ q: String(q).trim(), o: o.map(function (x) { return String(x).trim(); }), a: idx, e: String(r.explanation || r.exp || r.e || '').trim(), t: String(r.subject || r.tag || r.t || defTag || '').trim() });
+  });
+  return { items: items, issues: issues };
+}
+function parseMCQ(text, defTag) {
+  text = String(text || '').replace(/\r/g, '').trim();
+  if (!text) return { items: [], issues: [] };
+  if (text[0] === '[' || text[0] === '{') { try { return fromJSON(JSON.parse(text), defTag); } catch (e) { /* fall through to text format */ } }
+  var OPT = /^\s*(\*?)\s*\(?([A-Fa-f])[\.\)\:]\s+(.*\S.*)$/;
+  var ANS = /^\s*(?:correct\s+)?(?:ans(?:wer)?|key|correct)\s*(?:is)?\s*[:\-=]?\s*\(?([A-Fa-f])\)?(?![A-Za-z0-9])/i;
+  var EXP = /^\s*(?:explanation|exp|rationale|reason|note)\s*[:\-]\s*(.*)$/i;
+  var TAG = /^\s*(?:subject|topic|tag|chapter|category)\s*[:\-]\s*(.+)$/i;
+  var lines = text.split('\n');
+  var items = [], issues = [], cur = null, last = null, blank = true, blockTag = '', count = 0;
+  function finish() {
+    if (!cur) return;
+    count++;
+    var label = 'Question ' + count + ' (line ' + cur.line + ')';
+    if (cur.o.length < 2) issues.push(label + ': fewer than 2 options found.');
+    else if (cur.a < 0 || cur.a >= cur.o.length) issues.push(label + ': no correct answer found. Add a line like "Answer: C".');
+    else items.push({ q: cur.q.trim(), o: cur.o, a: cur.a, e: cur.e.trim(), t: cur.t });
+    cur = null; last = null;
+  }
+  for (var ln = 0; ln < lines.length; ln++) {
+    var line = lines[ln].trim();
+    if (!line) { blank = true; continue; }
+    var m;
+    if ((m = line.match(TAG))) {
+      if (cur && !blank) { cur.t = m[1].trim(); blank = false; } else { blockTag = m[1].trim(); }
+      continue;
+    }
+    if (cur && cur.o.length >= 2 && (m = line.match(EXP))) { cur.e = m[1].trim(); last = 'exp'; blank = false; continue; }
+    if (cur && cur.o.length >= 2 && (m = line.match(ANS))) { cur.a = LET.indexOf(m[1].toUpperCase()); last = 'ans'; blank = false; continue; }
+    if (cur) {
+      var om = line.match(OPT);
+      if (om && last !== 'ans' && last !== 'exp' && LET.indexOf(om[2].toUpperCase()) === cur.o.length) {
+        var txt = om[3].trim(), star = om[1] === '*';
+        if (/\s\*$/.test(txt)) { star = true; txt = txt.replace(/\s*\*$/, ''); }
+        cur.o.push(txt);
+        if (star) cur.a = cur.o.length - 1;
+        last = 'opt'; blank = false; continue;
+      }
+    }
+    var qs = qStart(line);
+    var isNew = !cur;
+    if (cur && cur.o.length >= 2) isNew = !!qs || blank;
+    else if (cur) isNew = blank && !!qs;
+    if (isNew) {
+      finish();
+      cur = { q: qs != null ? qs : line, o: [], a: -1, e: '', t: blockTag || defTag || '', line: ln + 1 };
+      last = 'q'; blank = false; continue;
+    }
+    if (last === 'opt') cur.o[cur.o.length - 1] += ' ' + line;
+    else if (last === 'exp' || last === 'ans') cur.e += (cur.e ? ' ' : '') + line;
+    else cur.q += '\n' + line;
+    blank = false;
+  }
+  finish();
+  return { items: items, issues: issues };
+}
+//#parser-end
+
+/* ---------- state ---------- */
+var LS = {
+  get: function (k, d) { try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+  set: function (k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } },
+  del: function (k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } }
+};
+var sb = null;
+var S = freshState();
+function freshState() {
+  return {
+    mode: 'auth', loading: false, loadErr: '', busy: false,
+    uid: null, user: null, profile: null, isAdmin: false,
+    auth: { mode: 'in', name: '', email: '', pass: '', msg: null },
+    tab: 'practice', view: 'home',
+    bank: [], attempts: [], saved: null, lb: undefined,
+    exam: null, result: null, rf: 'all',
+    setup: { count: null, minutes: null, touched: false, subj: [], shq: true, sho: false },
+    imp: { text: '', tag: '', parsed: null },
+    q: '', confirm: '', confirmSubmit: false
+  };
+}
+function resetUser() {
+  stopTick();
+  var keep = { mode: S.mode, auth: { mode: 'in', name: '', email: '', pass: '', msg: null } };
+  S = freshState(); S.mode = keep.mode; S.auth = keep.auth;
+}
+
+function toast(msg) {
+  var t = $('#toast'); if (!t) return;
+  t.textContent = msg; t.hidden = false;
+  clearTimeout(toast._t); toast._t = setTimeout(function () { t.hidden = true; }, 4800);
+}
+function errText(e) {
+  var m = (e && e.message) ? e.message : String(e);
+  if (/row-level security/i.test(m)) return 'You do not have permission to do that.';
+  return m;
+}
+
+/* ---------- database mapping ---------- */
+function fromQ(r) { return { id: r.id, q: r.stem, o: r.options, a: r.answer, e: r.explanation || '', t: r.subject || '' }; }
+function toQ(it) { return { subject: it.t || '', stem: it.q, options: it.o, answer: it.a, explanation: it.e || '' }; }
+function fromA(r) { return { id: r.id, startedAt: Date.parse(r.started_at), finishedAt: Date.parse(r.finished_at), limit: r.limit_sec, used: r.used_sec, total: r.total, correct: r.correct, wrong: r.wrong, skipped: r.skipped, qids: r.qids || [], ans: r.answers || {}, flag: r.flagged || [], subj: r.subj || [] }; }
+function toA(a) { return { id: a.id, started_at: new Date(a.startedAt).toISOString(), finished_at: new Date(a.finishedAt).toISOString(), limit_sec: a.limit, used_sec: a.used, total: a.total, correct: a.correct, wrong: a.wrong, skipped: a.skipped, qids: a.qids, answers: a.ans, flagged: a.flag, subj: a.subj }; }
+
+function fetchAll(table, orderCol, asc) {
+  var out = [], step = 1000;
+  function page(from) {
+    return sb.from(table).select('*').order(orderCol, { ascending: asc }).order('id', { ascending: true }).range(from, from + step - 1).then(function (r) {
+      if (r.error) throw r.error;
+      var d = r.data || [];
+      out = out.concat(d);
+      return d.length < step ? out : page(from + step);
+    });
+  }
+  return page(0);
+}
+
+function addQuestions(items) {
+  var have = {}; S.bank.forEach(function (q) { have[norm(q.q)] = 1; });
+  var fresh = [], dup = 0;
+  items.forEach(function (it) { var k = norm(it.q); if (have[k]) { dup++; return; } have[k] = 1; fresh.push(it); });
+  var added = [], p = Promise.resolve();
+  for (var i = 0; i < fresh.length; i += 200) {
+    (function (chunk) {
+      p = p.then(function () { return sb.from('questions').insert(chunk.map(toQ)).select(); }).then(function (r) {
+        if (r.error) throw r.error;
+        added = added.concat((r.data || []).map(fromQ));
+      });
+    })(fresh.slice(i, i + 200));
+  }
+  return p.then(function () { return { added: added, dup: dup }; }, function (e) { S.bank = S.bank.concat(added); throw e; });
+}
+
+function saveAttempt(a) {
+  return sb.from('attempts').insert(toA(a)).then(function (r) {
+    if (r.error) throw r.error;
+    a.unsaved = false;
+  }).catch(function (e) {
+    a.unsaved = true;
+    toast('Your result could not be saved online: ' + errText(e));
+  });
+}
+
+/* ---------- sign in / load ---------- */
+function signedIn(user) {
+  S.uid = user.id; S.user = user; S.loading = true; S.loadErr = ''; render();
+  Promise.all([
+    sb.from('profiles').select('display_name').eq('id', user.id).maybeSingle(),
+    sb.rpc('is_admin'),
+    fetchAll('questions', 'created_at', true),
+    fetchAll('attempts', 'finished_at', false)
+  ]).then(function (r) {
+    if (r[0].error) throw r[0].error;
+    if (r[1].error) throw r[1].error;
+    S.profile = r[0].data || { display_name: String(user.email || 'Student').split('@')[0] };
+    S.isAdmin = r[1].data === true;
+    S.bank = r[2].map(fromQ);
+    S.attempts = r[3].map(fromA);
+    var sv = LS.get('flp.session.' + user.id, null);
+    S.saved = (sv && sv.qids && sv.ans && sv.perm) ? sv : null;
+    S.loading = false; S.view = 'home'; S.tab = 'practice'; render();
+  }).catch(function (e) {
+    S.loading = false; S.loadErr = errText(e) || 'Could not load your data.'; render();
+  });
+}
+
+function doAuth() {
+  var a = S.auth;
+  if (S.busy) return;
+  var email = a.email.trim();
+  if (!/^\S+@\S+\.\S+$/.test(email)) { a.msg = { t: 'err', m: 'Enter a valid email address.' }; render(); return; }
+  if (a.pass.length < 6) { a.msg = { t: 'err', m: 'Use a password with at least 6 characters.' }; render(); return; }
+  if (a.mode === 'up' && !a.name.trim()) { a.msg = { t: 'err', m: 'Enter the name you want on the leaderboard.' }; render(); return; }
+  S.busy = true; a.msg = null; render();
+  var req = a.mode === 'up'
+    ? sb.auth.signUp({ email: email, password: a.pass, options: { data: { display_name: a.name.trim() } } })
+    : sb.auth.signInWithPassword({ email: email, password: a.pass });
+  req.then(function (r) {
+    S.busy = false;
+    if (r.error) { a.msg = { t: 'err', m: r.error.message }; }
+    else if (a.mode === 'up' && !(r.data && r.data.session)) {
+      a.msg = { t: 'ok', m: 'Account created. Check your email for a confirmation link, then sign in.' }; a.mode = 'in'; a.pass = '';
+    } else { a.pass = ''; }
+    render();
+  }).catch(function (e) { S.busy = false; a.msg = { t: 'err', m: errText(e) }; render(); });
+}
+
+/* ---------- helpers ---------- */
+function bankMap() { var m = new Map(); S.bank.forEach(function (q) { m.set(q.id, q); }); return m; }
+function subjects() { var m = {}; S.bank.forEach(function (q) { var k = q.t || 'Untagged'; m[k] = (m[k] || 0) + 1; }); return m; }
+function pool() { var f = S.setup.subj; return f.length ? S.bank.filter(function (q) { return f.indexOf(q.t || 'Untagged') >= 0; }) : S.bank; }
+function clock(s) { var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ':' : '') + String(m).padStart(2, '0') + ':' + String(x).padStart(2, '0'); }
+function dur(s) { var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + 'h ' : '') + m + 'm ' + x + 's'; }
+function when(ts) { return new Date(ts).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+function pct(c, t) { return t ? (c / t * 100).toFixed(1) : '0.0'; }
+function top() { window.scrollTo(0, 0); }
+
+var SAMPLES = [
+  { t: 'Anatomy', q: 'Which nerve supplies the deltoid muscle?', o: ['Radial nerve', 'Axillary nerve', 'Musculocutaneous nerve', 'Suprascapular nerve', 'Long thoracic nerve'], a: 1, e: 'The axillary nerve (C5, C6) supplies the deltoid and teres minor.' },
+  { t: 'Anatomy', q: 'Which nerve passes through the foramen rotundum?', o: ['Ophthalmic division of the trigeminal', 'Maxillary division of the trigeminal', 'Mandibular division of the trigeminal', 'Facial nerve', 'Glossopharyngeal nerve'], a: 1, e: 'The maxillary nerve (V2) leaves the skull through the foramen rotundum. V3 uses the foramen ovale.' },
+  { t: 'Anatomy', q: 'In most people the sinoatrial node is supplied by which artery?', o: ['Left anterior descending artery', 'Left circumflex artery', 'Right coronary artery', 'Posterior interventricular artery', 'Left marginal artery'], a: 2, e: 'The SA nodal artery arises from the right coronary artery in about 60% of people.' },
+  { t: 'Physiology', q: 'Which ion is the major cation of extracellular fluid?', o: ['Potassium', 'Calcium', 'Magnesium', 'Sodium', 'Hydrogen'], a: 3, e: 'Sodium is the main extracellular cation. Potassium is the main intracellular cation.' },
+  { t: 'Physiology', q: 'What is the approximate normal GFR in a healthy adult?', o: ['25 mL/min', '60 mL/min', '125 mL/min', '250 mL/min', '500 mL/min'], a: 2, e: 'Normal GFR is about 120 to 125 mL/min, roughly 180 L/day.' },
+  { t: 'Biochemistry', q: 'Which enzyme is the rate-limiting step of glycolysis?', o: ['Hexokinase', 'Phosphofructokinase-1', 'Pyruvate kinase', 'Enolase', 'Aldolase'], a: 1, e: 'PFK-1 is the main control point. It is activated by AMP and fructose 2,6-bisphosphate and inhibited by ATP and citrate.' },
+  { t: 'Biochemistry', q: 'Deficiency of which vitamin causes scurvy?', o: ['Vitamin A', 'Thiamine', 'Vitamin C', 'Vitamin D', 'Niacin'], a: 2, e: 'Vitamin C is needed for hydroxylation of proline and lysine in collagen synthesis.' },
+  { t: 'Biochemistry', q: 'Where does oxidative phosphorylation take place?', o: ['Cytosol', 'Inner mitochondrial membrane', 'Outer mitochondrial membrane', 'Nucleus', 'Golgi apparatus'], a: 1, e: 'The electron transport chain and ATP synthase sit in the inner mitochondrial membrane.' }
+];
+
+var FORMAT_EXAMPLE = 'Subject: Anatomy\n\n1. Which nerve supplies the deltoid muscle?\nA) Radial nerve\nB) Axillary nerve\nC) Musculocutaneous nerve\nD) Suprascapular nerve\nE) Long thoracic nerve\nAnswer: B\nExplanation: Axillary nerve, C5-C6.\n\n2. Next question here...';
+var AI_PROMPT = 'Convert the MCQs below into this exact plain-text format. Keep my wording. Do not change any answer. Put one blank line between questions.\n\n1. Question text\nA) option\nB) option\nC) option\nD) option\nE) option\nAnswer: C\nExplanation: one or two lines (leave out if none)\n\nAdd a line "Subject: <name>" above a group of questions if I give you the subject.\n\nMCQs:\n[paste here]';
+
+/* ---------- views ---------- */
+function setupView() {
+  return '<div class="authwrap"><div class="card stack"><div><h1>FLP Mock Exam</h1><p class="sub">One more step before this site works.</p></div><div class="notice warn"><strong>The database is not connected yet.</strong><ol class="steps"><li>Create a free Supabase project.</li><li>Run <code>schema.sql</code> in its SQL Editor.</li><li>Paste the project URL and public key into <code>config.js</code>, then upload the files again.</li></ol></div><p class="sub">The README has every step in detail.</p></div></div>';
+}
+function nolibView() {
+  return '<div class="authwrap"><div class="card stack"><h1>FLP Mock Exam</h1><div class="notice warn">The sign-in library could not load. Check your internet connection and reload the page.</div></div></div>';
+}
+function loadingView() {
+  return '<div class="authwrap"><div class="card"><h2>Loading</h2><p class="sub">Getting your questions and results...</p></div></div>';
+}
+function errView() {
+  return '<div class="authwrap"><div class="card stack"><h2>Could not load your data</h2><div class="notice warn">' + esc(S.loadErr) + '</div><p class="sub">If this is a new setup, check that schema.sql ran without errors and that config.js has the right URL and key.</p><div class="row"><button class="btn btn-primary" type="button" data-act="retry">Try again</button><button class="btn" type="button" data-act="signout">Sign out</button></div></div></div>';
+}
+function authView() {
+  var a = S.auth, up = a.mode === 'up';
+  var h = '<div class="authwrap"><div class="card stack"><div><h1>FLP Mock Exam</h1><p class="sub">Sign in to practice timed papers, track your results and see the leaderboard.</p></div>';
+  h += '<div class="seg" role="group" aria-label="Sign in or create account"><button type="button" data-act="authmode" data-m="in" aria-pressed="' + !up + '">Sign in</button><button type="button" data-act="authmode" data-m="up" aria-pressed="' + up + '">Create account</button></div>';
+  h += '<form id="authform" class="stack" novalidate>';
+  if (up) h += '<div><label class="lbl" for="aname">Name on the leaderboard</label><input id="aname" type="text" autocomplete="nickname" value="' + esc(a.name) + '"></div>';
+  h += '<div><label class="lbl" for="aemail">Email</label><input id="aemail" type="email" autocomplete="email" inputmode="email" value="' + esc(a.email) + '"></div>';
+  h += '<div><label class="lbl" for="apass">Password</label><input id="apass" type="password" autocomplete="' + (up ? 'new-password' : 'current-password') + '" value="' + esc(a.pass) + '"><p class="sub" style="margin-top:4px">At least 6 characters.</p></div>';
+  if (a.msg) h += '<p class="msg ' + a.msg.t + '" role="' + (a.msg.t === 'err' ? 'alert' : 'status') + '">' + esc(a.msg.m) + '</p>';
+  h += '<button class="btn btn-primary" type="submit"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Please wait...' : (up ? 'Create account' : 'Sign in')) + '</button></form></div></div>';
+  return h;
+}
+
+function shell(content) {
+  var tabs = [['practice', 'Practice'], ['history', 'History'], ['leaderboard', 'Leaderboard']];
+  if (S.isAdmin) tabs.push(['manage', 'Manage questions']);
+  var nav = tabs.map(function (t) { return '<button type="button" data-act="tab" data-tab="' + t[0] + '"' + (S.tab === t[0] ? ' aria-current="page"' : '') + '>' + t[1] + '</button>'; }).join('');
+  var name = (S.profile && S.profile.display_name) || 'Student';
+  return '<header class="top"><div class="brand"><h1>FLP Mock Exam</h1><p>Timed MCQ practice from a shared question bank</p></div><div class="right"><nav class="nav" aria-label="Sections">' + nav + '</nav><div class="who"><span>' + esc(name) + (S.isAdmin ? ' (admin)' : '') + '</span><button class="btn btn-sm" type="button" data-act="signout">Sign out</button></div></div></header>' + content + '<p class="foot">Your results are saved to your account online.</p>';
+}
+
+function resumeCard() {
+  var s = S.saved; if (!s) return '';
+  var left = Math.round((s.endAt - Date.now()) / 1000);
+  var answered = Object.keys(s.ans || {}).length;
+  if (left > 0) {
+    return '<div class="notice"><div class="row between"><div><h3>Exam in progress</h3><p class="sub">' + answered + ' of ' + s.qids.length + ' answered, <span class="mono">' + clock(left) + '</span> left on the clock.</p></div><div class="row"><button class="btn btn-primary" type="button" data-act="resume">Resume</button><button class="btn" type="button" data-act="discard">Discard</button></div></div></div>';
+  }
+  return '<div class="notice warn"><div class="row between"><div><h3>Time ran out on your last exam</h3><p class="sub">' + answered + ' of ' + s.qids.length + ' answered. Submit it to see your result.</p></div><div class="row"><button class="btn btn-primary" type="button" data-act="resume">Submit and see result</button><button class="btn" type="button" data-act="discard">Discard</button></div></div></div>';
+}
+
+function homeView() {
+  var n = S.bank.length;
+  var h = '<div class="stack">' + resumeCard();
+  if (!n) {
+    h += '<div class="empty"><h2>No questions yet</h2>' + (S.isAdmin
+      ? '<p class="sub" style="margin-bottom:16px;max-width:60ch">Add MCQs in Manage questions and everyone who signs in can practise them. You can also load 8 sample questions to try a paper.</p><div class="row"><button class="btn btn-primary" type="button" data-act="tab" data-tab="manage">Add questions</button><button class="btn" type="button" data-act="samples">Load 8 sample questions</button></div>'
+      : '<p class="sub" style="max-width:60ch">The admin has not added any questions yet. Check back soon.</p>') + '</div>';
+    return h + '</div>';
+  }
+  var su = subjects(), keys = Object.keys(su).sort();
+  var P = pool();
+  var st = S.setup;
+  if (st.count == null) st.count = Math.min(P.length, 100);
+  if (st.count > P.length) st.count = P.length;
+  if (st.count < 1) st.count = Math.min(1, P.length);
+  if (st.minutes == null || !st.touched) st.minutes = Math.max(1, st.count);
+  h += '<section class="card stack" aria-labelledby="setup-h"><div><h2 id="setup-h">Set up a paper</h2><p class="sub">Choose how many questions and how long you get. The paper closes itself when the clock runs out.</p></div>';
+  h += '<div class="stats"><div class="stat"><b>' + n + '</b><span>In bank</span></div><div class="stat"><b>' + keys.length + '</b><span>Subjects</span></div><div class="stat"><b>' + S.attempts.length + '</b><span>Papers taken</span></div></div>';
+  if (keys.length > 1 || (keys.length === 1 && keys[0] !== 'Untagged')) {
+    h += '<div><span class="lbl">Subjects (none selected means all)</span><div class="chips">' + keys.map(function (k) { return '<label class="chip"><input type="checkbox" data-subj="' + esc(k) + '"' + (st.subj.indexOf(k) >= 0 ? ' checked' : '') + '>' + esc(k) + ' <span class="sub mono">' + su[k] + '</span></label>'; }).join('') + '</div></div>';
+  }
+  h += '<div class="grid2"><div><label class="lbl" for="cnt">Number of questions (max ' + P.length + ')</label><input id="cnt" type="number" min="1" max="' + P.length + '" value="' + st.count + '"></div><div><label class="lbl" for="mins">Time limit in minutes</label><input id="mins" type="number" min="1" max="600" value="' + st.minutes + '"></div></div>';
+  h += '<div class="row" style="gap:8px 28px"><label class="check" for="shq"><input id="shq" type="checkbox"' + (st.shq ? ' checked' : '') + '> Shuffle question order</label><label class="check" for="sho"><input id="sho" type="checkbox"' + (st.sho ? ' checked' : '') + '> Shuffle options</label></div>';
+  h += '<div class="row"><button class="btn btn-primary" type="button" data-act="start"' + (P.length ? '' : ' disabled') + '>Start exam</button><span class="sub">No answers are shown until you submit.</span></div></section>';
+  var recent = S.attempts.slice(0, 3);
+  if (recent.length) {
+    h += '<section class="card"><div class="row between" style="margin-bottom:8px"><h2>Recent papers</h2><button class="btn btn-sm" type="button" data-act="tab" data-tab="history">All history</button></div>' + attemptTable(recent, false) + '</section>';
+  }
+  return h + '</div>';
+}
+
+function attemptTable(list, withDelete) {
+  var rows = list.map(function (a) {
+    var del = withDelete ? '<td><button class="btn btn-sm' + (S.confirm === 'a:' + a.id ? ' btn-danger' : '') + '" type="button" data-act="delattempt" data-id="' + esc(a.id) + '">' + (S.confirm === 'a:' + a.id ? 'Confirm delete' : 'Delete') + '</button></td>' : '';
+    return '<tr><td>' + esc(when(a.finishedAt)) + '</td><td class="num">' + a.correct + ' / ' + a.total + '</td><td class="num">' + pct(a.correct, a.total) + '%</td><td><div class="bar" aria-hidden="true"><i style="width:' + pct(a.correct, a.total) + '%"></i></div></td><td class="num">' + esc(dur(a.used)) + '</td><td><button class="btn btn-sm" type="button" data-act="open" data-id="' + esc(a.id) + '">Review</button></td>' + del + '</tr>';
+  }).join('');
+  return '<div class="tbl-wrap"><table><thead><tr><th>Finished</th><th>Score</th><th>Percent</th><th></th><th>Time used</th><th></th>' + (withDelete ? '<th></th>' : '') + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+
+function historyView() {
+  if (!S.attempts.length) return '<div class="empty"><h2>No papers yet</h2><p class="sub">Finished exams appear here with your score and time, and you can reopen any of them to review the answers.</p></div>';
+  return '<section class="card stack"><div><h2>History</h2><p class="sub">' + S.attempts.length + ' paper' + (S.attempts.length === 1 ? '' : 's') + ' taken. Only you can see these. Reviews use the questions currently in the bank.</p></div>' + attemptTable(S.attempts, true) + '</section>';
+}
+
+function leaderboardView() {
+  var lb = S.lb;
+  if (lb === undefined || lb === null) return '<div class="card"><h2>Leaderboard</h2><p class="sub">Loading...</p></div>';
+  if (lb.error) return '<div class="card stack"><h2>Leaderboard</h2><div class="notice warn">' + esc(lb.error) + '</div><div><button class="btn" type="button" data-act="reloadlb">Try again</button></div></div>';
+  if (!lb.length) return '<div class="empty"><h2>No scores yet</h2><p class="sub">Finish a paper and you will be the first on the board.</p></div>';
+  var rows = lb.map(function (r, i) {
+    return '<tr' + (r.is_me ? ' class="me"' : '') + '><td class="num">' + (i + 1) + '</td><td>' + esc(r.display_name) + (r.is_me ? ' <span class="pill subj">you</span>' : '') + '</td><td class="num">' + Number(r.avg_pct).toFixed(1) + '%</td><td class="num">' + Number(r.best_pct).toFixed(1) + '%</td><td class="num">' + r.papers + '</td><td class="num">' + r.questions + '</td></tr>';
+  }).join('');
+  return '<section class="card stack"><div class="row between"><div><h2>Leaderboard</h2><p class="sub">Ranked by average score across all papers. Only names and totals are shown.</p></div><button class="btn btn-sm" type="button" data-act="reloadlb">Refresh</button></div><div class="tbl-wrap"><table><thead><tr><th>#</th><th>Name</th><th>Average</th><th>Best</th><th>Papers</th><th>Questions</th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
+}
+
+function manageView() {
+  var h = '<div class="stack"><section class="card stack" aria-labelledby="add-h"><div><h2 id="add-h">Add questions</h2><p class="sub">Only admins see this page. Paste MCQs below, check the format, then add them for everyone. Questions already in the bank are skipped.</p></div>';
+  h += '<details class="help"><summary>Format help</summary><div class="stack" style="margin-top:12px"><p class="sub">One blank line between questions. Options start with A) to E) (or A. to E.). Each question needs an Answer line. Explanation and Subject lines are optional. You can also mark the right option with a * in front. JSON is accepted too.</p><pre>' + esc(FORMAT_EXAMPLE) + '</pre><div><span class="lbl">Prompt to convert messy MCQs into this format</span><textarea class="ro-box" id="aiprompt" readonly>' + esc(AI_PROMPT) + '</textarea><div class="row" style="margin-top:8px"><button class="btn btn-sm" type="button" data-act="copyprompt">Copy prompt</button></div></div></div></details>';
+  h += '<div><label class="lbl" for="imptag">Subject for questions without one (optional)</label><input id="imptag" type="text" value="' + esc(S.imp.tag) + '" placeholder="e.g. Physiology"></div>';
+  h += '<div><label class="lbl" for="imptext">Questions</label><textarea id="imptext" spellcheck="false" placeholder="1. Question text&#10;A) option&#10;B) option&#10;C) option&#10;D) option&#10;Answer: B&#10;Explanation: optional">' + esc(S.imp.text) + '</textarea></div>';
+  var pr = S.imp.parsed;
+  if (pr) {
+    h += '<div class="notice' + (pr.items.length ? '' : ' warn') + '"><strong>' + pr.items.length + ' question' + (pr.items.length === 1 ? '' : 's') + ' ready to add.</strong>' + (pr.issues.length ? ' ' + pr.issues.length + ' could not be read.' : '');
+    if (pr.issues.length) h += '<ul class="issues">' + pr.issues.slice(0, 12).map(function (i) { return '<li>' + esc(i) + '</li>'; }).join('') + (pr.issues.length > 12 ? '<li>and ' + (pr.issues.length - 12) + ' more</li>' : '') + '</ul>';
+    h += '</div>';
+  }
+  h += '<div class="row"><button class="btn" type="button" data-act="check">Check format</button><button class="btn btn-primary" type="button" data-act="import"' + (pr && pr.items.length && !S.busy ? '' : ' disabled') + '>' + (S.busy ? 'Adding...' : 'Add ' + (pr && pr.items.length ? pr.items.length + ' ' : '') + 'to bank') + '</button></div></section>';
+  h += '<section class="card stack" aria-labelledby="bank-h"><div class="row between"><div><h2 id="bank-h">Question bank (' + S.bank.length + ')</h2><p class="sub" id="bank-sum"></p></div><div class="row"><button class="btn btn-sm" type="button" data-act="samples">Add sample questions</button>' + (S.bank.length ? '<button class="btn btn-sm' + (S.confirm === 'all' ? ' btn-danger' : '') + '" type="button" data-act="delall">' + (S.confirm === 'all' ? 'Confirm: delete all ' + S.bank.length : 'Delete all') + '</button>' : '') + '</div></div>';
+  if (S.bank.length) h += '<div><label class="lbl" for="bsearch">Search</label><input id="bsearch" type="text" value="' + esc(S.q) + '" placeholder="Search questions or subjects"></div>';
+  h += '<div id="banklist"></div></section></div>';
+  return h;
+}
+
+function renderBankList() {
+  var el = $('#banklist'); if (!el) return;
+  var sum = $('#bank-sum');
+  var su = subjects();
+  if (sum) sum.textContent = Object.keys(su).sort().map(function (k) { return k + ' ' + su[k]; }).join(' · ');
+  if (!S.bank.length) { el.innerHTML = '<p class="sub">Nothing here yet. Add questions above.</p>'; return; }
+  var f = norm(S.q);
+  var list = S.bank.map(function (q, i) { return { q: q, i: i }; }).filter(function (r) { return !f || norm(r.q.q + ' ' + (r.q.t || '')).indexOf(f) >= 0; });
+  var shown = list.slice(0, 100);
+  var h = shown.map(function (r) {
+    var q = r.q, k = 'q:' + q.id, c = S.confirm === k;
+    return '<div class="qrow"><span class="qn">' + (r.i + 1) + '</span><div class="qt">' + esc(q.q.length > 200 ? q.q.slice(0, 200) + '...' : q.q) + '<div class="row" style="margin-top:4px;gap:6px">' + (q.t ? '<span class="pill subj">' + esc(q.t) + '</span>' : '') + '<span class="sub">Answer ' + LET[q.a] + ' · ' + q.o.length + ' options</span></div></div><button class="btn btn-sm' + (c ? ' btn-danger' : '') + '" type="button" data-act="delq" data-id="' + esc(q.id) + '">' + (c ? 'Confirm' : 'Delete') + '</button></div>';
+  }).join('');
+  if (!list.length) h = '<p class="sub">No questions match your search.</p>';
+  if (list.length > shown.length) h += '<p class="sub" style="margin-top:10px">Showing the first ' + shown.length + ' of ' + list.length + ' matches. Search to narrow it down.</p>';
+  el.innerHTML = h;
+}
+
+function palette(ex, clickable) {
+  var cells = ex.qids.map(function (id, i) {
+    var cls = 'pal' + (ex.ans[id] != null ? ' ans' : '') + (ex.flag[id] ? ' flag' : '') + (i === ex.i && clickable ? ' cur' : '');
+    var label = 'Question ' + (i + 1) + ', ' + (ex.ans[id] != null ? 'answered' : 'not answered') + (ex.flag[id] ? ', flagged' : '');
+    return '<button type="button" class="' + cls + '" data-act="go" data-i="' + i + '" aria-label="' + label + '"' + (i === ex.i && clickable ? ' aria-current="true"' : '') + '>' + (i + 1) + '</button>';
+  }).join('');
+  return '<div class="pal-scroll"><div class="pal-grid">' + cells + '</div></div><div class="legend"><span><i class="sw ans"></i>Answered</span><span><i class="sw"></i>Not answered</span><span><i class="sw flag"></i>Flagged</span></div>';
+}
+
+function examBar(ex, finishLabel) {
+  var rem = Math.max(0, Math.round((ex.endAt - Date.now()) / 1000));
+  return '<div class="exam-bar"><div><div class="eyebrow">Practice paper</div><div class="sub">' + ex.qids.length + ' questions</div></div><div class="row"><div class="timer" id="timer" role="timer">' + clock(rem) + '</div>' + finishLabel + '</div></div>';
+}
+
+function examView() {
+  var ex = S.exam, M = bankMap(), id = ex.qids[ex.i], q = M.get(id);
+  var perm = ex.perm[id], sel = ex.ans[id];
+  var opts = perm.map(function (orig, pos) {
+    return '<button type="button" class="opt" role="radio" aria-checked="' + (sel === orig) + '" data-act="pick" data-o="' + orig + '"><span class="l">' + LET[pos] + '</span><span class="t">' + esc(q.o[orig]) + '</span></button>';
+  }).join('');
+  var done = Object.keys(ex.ans).length;
+  var h = examBar(ex, '<button type="button" class="btn btn-primary" data-act="finish">Finish exam</button>');
+  h += '<div class="exam-grid"><section class="card" aria-label="Question"><div class="qhead"><strong>Question ' + (ex.i + 1) + ' of ' + ex.qids.length + '</strong><span>' + done + ' answered</span></div><p class="stem">' + nl(q.q) + '</p><div class="opts" role="radiogroup" aria-label="Options">' + opts + '</div>';
+  h += '<div class="qnav"><button type="button" class="btn" data-act="prev"' + (ex.i === 0 ? ' disabled' : '') + '>Previous</button><button type="button" class="btn" data-act="next"' + (ex.i === ex.qids.length - 1 ? ' disabled' : '') + '>Next</button><span class="grow"></span><button type="button" class="btn' + (ex.flag[id] ? ' flagged' : '') + '" data-act="flag" aria-pressed="' + !!ex.flag[id] + '">' + (ex.flag[id] ? 'Flagged for review' : 'Flag for review') + '</button><button type="button" class="btn" data-act="clear"' + (sel == null ? ' disabled' : '') + '>Clear answer</button></div>';
+  h += '<p class="sub" style="margin-top:12px">Keys: A to E pick an option, arrow keys or N and P move, F flags.</p></section>';
+  h += '<aside class="card" aria-label="Question palette"><h3 style="margin-bottom:10px">Question palette</h3>' + palette(ex, true) + '</aside></div>';
+  return h;
+}
+
+function finishView() {
+  var ex = S.exam, total = ex.qids.length, ans = Object.keys(ex.ans).length, fl = ex.qids.filter(function (id) { return ex.flag[id]; }).length;
+  var un = total - ans;
+  var h = examBar(ex, '');
+  h += '<div class="stack"><section class="card stack"><div><h2>Review before you submit</h2><p class="sub">Select a number to go back to that question.</p></div><div class="stats"><div class="stat"><b>' + ans + '</b><span>Answered</span></div><div class="stat"><b>' + un + '</b><span>Not answered</span></div><div class="stat"><b>' + fl + '</b><span>Flagged</span></div></div>' + palette(ex, false) + '</section>';
+  if (S.confirmSubmit) {
+    h += '<div class="notice warn"><h3>Submit your paper?</h3><p class="sub" style="margin:4px 0 12px">' + (un ? 'You still have ' + un + ' unanswered question' + (un === 1 ? '' : 's') + '. ' : '') + 'You cannot change answers after submitting.</p><div class="row"><button class="btn btn-primary" type="button" data-act="submit">Yes, submit</button><button class="btn" type="button" data-act="back">Keep working</button></div></div>';
+  } else {
+    h += '<div class="row"><button class="btn" type="button" data-act="back">Back to questions</button><button class="btn btn-primary" type="button" data-act="confirmsubmit">Submit exam</button></div>';
+  }
+  return h + '</div>';
+}
+
+function reviewItem(a, id, n, M) {
+  var q = M.get(id), you = a.ans[id], isFlag = (a.flag || []).indexOf(id) >= 0;
+  if (!q) return '<div class="ri"><div class="row"><strong>Question ' + n + '</strong><span class="pill skip">Removed from bank</span></div><p class="sub">This question is no longer in the bank.</p></div>';
+  var status = you == null ? '<span class="pill skip">Not answered</span>' : (you === q.a ? '<span class="pill ok">Correct</span>' : '<span class="pill bad">Wrong</span>');
+  var h = '<div class="ri"><div class="row" style="margin-bottom:8px"><strong>Question ' + n + '</strong>' + status + (isFlag ? '<span class="pill flag">Flagged</span>' : '') + (q.t ? '<span class="pill subj">' + esc(q.t) + '</span>' : '') + '</div><p class="stem" style="margin-bottom:8px">' + nl(q.q) + '</p>';
+  h += q.o.map(function (o, i) {
+    var cls = i === q.a ? ' correct' : (i === you ? ' wrong' : '');
+    var tag = i === q.a ? (i === you ? 'Correct, your answer' : 'Correct answer') : (i === you ? 'Your answer' : '');
+    return '<div class="ro' + cls + '"><span class="k">' + LET[i] + '</span><span class="t">' + esc(o) + '</span>' + (tag ? '<span class="tag">' + tag + '</span>' : '') + '</div>';
+  }).join('');
+  if (q.e) h += '<div class="exp"><strong>Explanation.</strong> ' + nl(q.e) + '</div>';
+  return h + '</div>';
+}
+
+function resultView() {
+  var a = S.result, M = bankMap();
+  var p = pct(a.correct, a.total);
+  var h = '<div class="stack">';
+  if (a.unsaved) h += '<div class="notice warn"><div class="row between"><div><strong>This result is not saved online yet.</strong><p class="sub">It will not appear on the leaderboard until it saves.</p></div><button class="btn btn-sm" type="button" data-act="resave">Try saving again</button></div></div>';
+  h += '<section class="card stack"><div class="score"><div><div class="eyebrow">Score</div><div class="pct">' + p + '%</div></div><div class="stats"><div class="stat"><b>' + a.correct + '</b><span>Correct</span></div><div class="stat"><b>' + a.wrong + '</b><span>Wrong</span></div><div class="stat"><b>' + a.skipped + '</b><span>Not answered</span></div><div class="stat"><b>' + esc(dur(a.used)) + '</b><span>Time used</span></div></div></div><p class="sub">' + a.correct + ' of ' + a.total + ' correct. Finished ' + esc(when(a.finishedAt)) + '.</p>';
+  var subj = (a.subj || []).filter(function (s) { return s.n; });
+  if (subj.length > 1 || (subj.length === 1 && subj[0].t !== 'Untagged')) {
+    h += '<div class="tbl-wrap"><table><thead><tr><th>Subject</th><th>Correct</th><th>Percent</th><th></th></tr></thead><tbody>' + subj.map(function (s) { return '<tr><td>' + esc(s.t) + '</td><td class="num">' + s.c + ' / ' + s.n + '</td><td class="num">' + pct(s.c, s.n) + '%</td><td><div class="bar" aria-hidden="true"><i style="width:' + pct(s.c, s.n) + '%"></i></div></td></tr>'; }).join('') + '</tbody></table></div>';
+  }
+  var miss = a.qids.filter(function (id) { return M.get(id) && a.ans[id] !== M.get(id).a; }).length;
+  h += '<div class="row">' + (miss ? '<button class="btn btn-primary" type="button" data-act="retake">Retake ' + miss + ' wrong or unanswered</button>' : '') + '<button class="btn" type="button" data-act="tab" data-tab="practice">New exam</button></div></section>';
+  var filters = [['all', 'All'], ['wrong', 'Wrong'], ['skipped', 'Not answered'], ['flagged', 'Flagged']];
+  h += '<section class="card stack"><div class="row between"><h2>Review</h2><div class="chips" role="group" aria-label="Filter review">' + filters.map(function (f) { return '<button type="button" class="btn btn-sm' + (S.rf === f[0] ? ' btn-primary' : '') + '" data-act="rf" data-f="' + f[0] + '" aria-pressed="' + (S.rf === f[0]) + '">' + f[1] + '</button>'; }).join('') + '</div></div><div>';
+  var shown = 0;
+  a.qids.forEach(function (id, i) {
+    var q = M.get(id), you = a.ans[id];
+    var ok = q && you === q.a;
+    if (S.rf === 'wrong' && (ok || you == null)) return;
+    if (S.rf === 'skipped' && you != null) return;
+    if (S.rf === 'flagged' && (a.flag || []).indexOf(id) < 0) return;
+    shown++;
+    h += reviewItem(a, id, i + 1, M);
+  });
+  if (!shown) h += '<p class="sub">Nothing in this filter.</p>';
+  return h + '</div></section></div>';
+}
+
+function render() {
+  var app = $('#app'), h;
+  if (S.mode === 'setup') h = setupView();
+  else if (S.mode === 'nolib') h = nolibView();
+  else if (S.loading) h = loadingView();
+  else if (!S.uid) h = authView();
+  else if (S.loadErr) h = errView();
+  else if (S.view === 'exam' && S.exam) h = examView();
+  else if (S.view === 'finish' && S.exam) h = finishView();
+  else if (S.view === 'result' && S.result) h = shell(resultView());
+  else if (S.tab === 'manage' && S.isAdmin) h = shell(manageView());
+  else if (S.tab === 'history') h = shell(historyView());
+  else if (S.tab === 'leaderboard') h = shell(leaderboardView());
+  else h = shell(homeView());
+  app.innerHTML = h;
+  if (S.uid && S.view === 'home' && S.tab === 'manage' && S.isAdmin) renderBankList();
+}
+
+/* ---------- exam flow ---------- */
+var tickId = null;
+function startTick() { stopTick(); tickId = setInterval(tick, 500); tick(); }
+function stopTick() { if (tickId) { clearInterval(tickId); tickId = null; } }
+function tick() {
+  if (!S.exam || (S.view !== 'exam' && S.view !== 'finish')) { stopTick(); return; }
+  var rem = Math.max(0, Math.round((S.exam.endAt - Date.now()) / 1000));
+  var el = $('#timer');
+  if (el) { el.textContent = clock(rem); el.className = 'timer' + (rem <= 60 ? ' crit' : (rem <= Math.max(300, S.exam.limit * 0.1) ? ' low' : '')); }
+  if (rem <= 0) { toast('Time is up. Your paper was submitted.'); submitExam(); }
+}
+function saveSession() { if (S.exam && S.uid) LS.set('flp.session.' + S.uid, S.exam); }
+
+function beginExam(qids, minutes, shuffleO) {
+  var M = bankMap(), perm = {};
+  qids.forEach(function (id) { var idx = M.get(id).o.map(function (_, i) { return i; }); perm[id] = shuffleO ? shuffle(idx) : idx; });
+  var secs = Math.round(minutes * 60), now = Date.now();
+  S.exam = { id: uuid(), qids: qids, perm: perm, ans: {}, flag: {}, i: 0, startedAt: now, limit: secs, endAt: now + secs * 1000 };
+  S.saved = S.exam; S.view = 'exam'; S.confirmSubmit = false;
+  saveSession(); render(); startTick(); top();
+}
+
+function submitExam() {
+  var ex = S.exam; if (!ex) return;
+  var M = bankMap(), correct = 0, wrong = 0, skipped = 0, per = {};
+  ex.qids.forEach(function (id) {
+    var q = M.get(id); if (!q) return;
+    var k = q.t || 'Untagged'; per[k] = per[k] || { t: k, c: 0, n: 0 }; per[k].n++;
+    var a = ex.ans[id];
+    if (a == null) skipped++; else if (a === q.a) { correct++; per[k].c++; } else wrong++;
+  });
+  var now = Date.now();
+  var att = { id: ex.id, startedAt: ex.startedAt, finishedAt: now, limit: ex.limit, used: Math.min(ex.limit, Math.round((now - ex.startedAt) / 1000)), total: correct + wrong + skipped, correct: correct, wrong: wrong, skipped: skipped, qids: ex.qids, ans: ex.ans, flag: ex.qids.filter(function (id) { return ex.flag[id]; }), subj: Object.keys(per).map(function (k) { return per[k]; }) };
+  S.attempts.unshift(att);
+  LS.del('flp.session.' + S.uid); S.saved = null; S.exam = null; S.result = att; S.view = 'result'; S.rf = 'all'; S.confirmSubmit = false;
+  stopTick(); render(); top();
+  saveAttempt(att).then(function () { if (S.view === 'result' && S.result === att) render(); });
+}
+
+function goTo(i) {
+  var ex = S.exam; if (!ex) return;
+  ex.i = Math.max(0, Math.min(ex.qids.length - 1, i));
+  S.view = 'exam'; S.confirmSubmit = false; saveSession(); render(); startTick();
+  if (!window.matchMedia('(max-width: 820px)').matches) top();
+}
+function pickOption(orig) { var ex = S.exam; ex.ans[ex.qids[ex.i]] = orig; saveSession(); render(); }
+
+function loadLB() {
+  S.lb = null; render();
+  sb.rpc('get_leaderboard').then(function (r) {
+    S.lb = r.error ? { error: errText(r.error) } : (r.data || []);
+    if (S.tab === 'leaderboard' && S.view === 'home') render();
+  });
+}
+
+/* ---------- actions ---------- */
+var A = {
+  tab: function (t) {
+    S.tab = t.dataset.tab; S.view = 'home'; S.confirm = '';
+    if (S.tab === 'leaderboard') { loadLB(); } else { render(); }
+    top();
+  },
+  authmode: function (t) { S.auth.mode = t.dataset.m; S.auth.msg = null; render(); },
+  signout: function () { stopTick(); if (sb) sb.auth.signOut(); },
+  retry: function () { var u = S.user; S.uid = null; if (u) signedIn(u); },
+  reloadlb: function () { loadLB(); },
+  resave: function () { var a = S.result; if (!a) return; saveAttempt(a).then(function () { render(); if (!a.unsaved) toast('Result saved.'); }); },
+  samples: function () {
+    if (S.busy) return;
+    S.busy = true;
+    addQuestions(SAMPLES).then(function (r) {
+      S.busy = false;
+      if (!r.added.length) { toast('The sample questions are already in the bank.'); return; }
+      S.bank = S.bank.concat(r.added); toast(r.added.length + ' sample questions added.'); render();
+    }).catch(function (e) { S.busy = false; toast('Could not add questions: ' + errText(e)); render(); });
+  },
+  start: function () {
+    var P = pool(), st = S.setup;
+    var count = Math.floor(Number($('#cnt').value)), mins = Number($('#mins').value);
+    if (!(count >= 1)) { toast('Enter at least 1 question.'); return; }
+    if (!(mins >= 1)) { toast('Enter a time limit of at least 1 minute.'); return; }
+    count = Math.min(count, P.length);
+    var ids = P.map(function (q) { return q.id; });
+    if (st.shq) ids = shuffle(ids);
+    beginExam(ids.slice(0, count), mins, st.sho);
+  },
+  resume: function () {
+    S.exam = S.saved; if (!S.exam) return;
+    var M = bankMap();
+    if (S.exam.qids.some(function (id) { return !M.get(id); })) { toast('Some questions in that paper were removed from the bank. It was discarded.'); LS.del('flp.session.' + S.uid); S.saved = null; S.exam = null; render(); return; }
+    if (S.exam.endAt <= Date.now()) { submitExam(); return; }
+    S.view = 'exam'; render(); startTick(); top();
+  },
+  discard: function () { LS.del('flp.session.' + S.uid); S.saved = null; render(); },
+  pick: function (t) { pickOption(Number(t.dataset.o)); },
+  go: function (t) { goTo(Number(t.dataset.i)); },
+  prev: function () { goTo(S.exam.i - 1); },
+  next: function () { goTo(S.exam.i + 1); },
+  flag: function () { var ex = S.exam, id = ex.qids[ex.i]; ex.flag[id] = !ex.flag[id]; if (!ex.flag[id]) delete ex.flag[id]; saveSession(); render(); },
+  clear: function () { var ex = S.exam; delete ex.ans[ex.qids[ex.i]]; saveSession(); render(); },
+  finish: function () { S.view = 'finish'; S.confirmSubmit = false; render(); startTick(); top(); },
+  back: function () { S.view = 'exam'; S.confirmSubmit = false; render(); startTick(); },
+  confirmsubmit: function () { S.confirmSubmit = true; render(); startTick(); },
+  submit: function () { submitExam(); },
+  retake: function () {
+    var a = S.result, M = bankMap();
+    var ids = a.qids.filter(function (id) { return M.get(id) && a.ans[id] !== M.get(id).a; });
+    if (!ids.length) return;
+    var mins = Math.max(1, Math.round(a.limit / 60 * ids.length / Math.max(1, a.total)));
+    beginExam(shuffle(ids), mins, S.setup.sho);
+  },
+  rf: function (t) { S.rf = t.dataset.f; render(); },
+  open: function (t) { var a = S.attempts.filter(function (x) { return x.id === t.dataset.id; })[0]; if (!a) return; S.result = a; S.view = 'result'; S.rf = 'all'; render(); top(); },
+  delattempt: function (t) {
+    var k = 'a:' + t.dataset.id, id = t.dataset.id;
+    if (S.confirm !== k) { S.confirm = k; render(); return; }
+    S.confirm = '';
+    sb.from('attempts').delete().eq('id', id).select('id').then(function (r) {
+      if (r.error) { toast('Could not delete: ' + errText(r.error)); return; }
+      S.attempts = S.attempts.filter(function (a) { return a.id !== id; }); render();
+    });
+  },
+  check: function () {
+    S.imp.text = $('#imptext').value; S.imp.tag = $('#imptag').value.trim();
+    S.imp.parsed = parseMCQ(S.imp.text, S.imp.tag);
+    if (!S.imp.text.trim()) toast('Paste some questions first.');
+    render();
+  },
+  import: function () {
+    var pr = S.imp.parsed; if (!pr || !pr.items.length || S.busy) return;
+    S.busy = true; render();
+    addQuestions(pr.items).then(function (r) {
+      S.busy = false; S.bank = S.bank.concat(r.added);
+      S.imp = { text: '', tag: '', parsed: null };
+      toast(r.added.length + ' added' + (r.dup ? ', ' + r.dup + ' duplicate' + (r.dup === 1 ? '' : 's') + ' skipped' : '') + '.');
+      render();
+    }).catch(function (e) { S.busy = false; toast('Could not add questions: ' + errText(e)); render(); });
+  },
+  delq: function (t) {
+    var k = 'q:' + t.dataset.id, id = t.dataset.id;
+    if (S.confirm !== k) { S.confirm = k; renderBankList(); return; }
+    S.confirm = '';
+    sb.from('questions').delete().eq('id', id).select('id').then(function (r) {
+      if (r.error) { toast('Could not delete: ' + errText(r.error)); return; }
+      if (!r.data || !r.data.length) { toast('You do not have permission to delete questions.'); return; }
+      S.bank = S.bank.filter(function (q) { return q.id !== id; }); render();
+    });
+  },
+  delall: function () {
+    if (S.confirm !== 'all') { S.confirm = 'all'; render(); return; }
+    S.confirm = '';
+    sb.from('questions').delete().neq('id', '00000000-0000-0000-0000-000000000000').select('id').then(function (r) {
+      if (r.error) { toast('Could not delete: ' + errText(r.error)); return; }
+      S.bank = []; S.setup.count = null; S.setup.subj = []; render(); toast('Question bank cleared.');
+    });
+  },
+  copyprompt: function () {
+    var box = $('#aiprompt');
+    function fallback() { if (box) { box.focus(); box.select(); } toast('Copy blocked here. The prompt is selected, press Ctrl+C.'); }
+    try { navigator.clipboard.writeText(AI_PROMPT).then(function () { toast('Prompt copied.'); }, fallback); } catch (e) { fallback(); }
+  }
+};
+
+var app = $('#app');
+app.addEventListener('click', function (e) {
+  var t = e.target.closest('[data-act]'); if (!t || t.disabled) return;
+  var f = A[t.dataset.act]; if (f) f(t, e);
+});
+app.addEventListener('submit', function (e) {
+  if (e.target.id === 'authform') { e.preventDefault(); doAuth(); }
+});
+app.addEventListener('input', function (e) {
+  var id = e.target.id, st = S.setup;
+  if (id === 'aname') S.auth.name = e.target.value;
+  else if (id === 'aemail') S.auth.email = e.target.value;
+  else if (id === 'apass') S.auth.pass = e.target.value;
+  else if (id === 'imptext') { S.imp.text = e.target.value; S.imp.parsed = null; }
+  else if (id === 'imptag') S.imp.tag = e.target.value;
+  else if (id === 'bsearch') { S.q = e.target.value; renderBankList(); }
+  else if (id === 'cnt') { st.count = Math.floor(Number(e.target.value)) || 1; if (!st.touched) { st.minutes = Math.max(1, st.count); var m = $('#mins'); if (m) m.value = st.minutes; } }
+  else if (id === 'mins') { st.minutes = Number(e.target.value) || 1; st.touched = true; }
+});
+app.addEventListener('change', function (e) {
+  var t = e.target, st = S.setup;
+  if (t.id === 'shq') st.shq = t.checked;
+  else if (t.id === 'sho') st.sho = t.checked;
+  else if (t.dataset && t.dataset.subj != null) {
+    var k = t.dataset.subj, i = st.subj.indexOf(k);
+    if (t.checked && i < 0) st.subj.push(k); else if (!t.checked && i >= 0) st.subj.splice(i, 1);
+    st.count = null; render();
+  }
+});
+document.addEventListener('keydown', function (e) {
+  if (S.view !== 'exam' || !S.exam) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target && e.target.closest && e.target.closest('input,textarea,select')) return;
+  var k = e.key.toLowerCase(), ex = S.exam, id = ex.qids[ex.i];
+  if (k === 'arrowright' || k === 'n') { if (ex.i < ex.qids.length - 1) { e.preventDefault(); goTo(ex.i + 1); } }
+  else if (k === 'arrowleft' || k === 'p') { if (ex.i > 0) { e.preventDefault(); goTo(ex.i - 1); } }
+  else if (k === 'f') { e.preventDefault(); A.flag(); }
+  else if (/^[a-e]$/.test(k)) { var pos = LET.indexOf(k.toUpperCase()), perm = ex.perm[id]; if (pos < perm.length) { e.preventDefault(); pickOption(perm[pos]); } }
+});
+
+/* ---------- boot ---------- */
+function boot() {
+  var cfg = window.APP_CONFIG || {};
+  if (!cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY || /PASTE_/.test(cfg.SUPABASE_URL) || /PASTE_/.test(cfg.SUPABASE_ANON_KEY)) { S.mode = 'setup'; render(); return; }
+  if (!window.supabase || !window.supabase.createClient) { S.mode = 'nolib'; render(); return; }
+  sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+  S.loading = true; render();
+  sb.auth.onAuthStateChange(function (ev, sess) {
+    setTimeout(function () {
+      if (sess && sess.user) { if (S.uid !== sess.user.id) signedIn(sess.user); }
+      else {
+        if (ev === 'SIGNED_OUT') resetUser();
+        S.loading = false; render();
+      }
+    }, 0);
+  });
+}
+boot();
+})();
+</script>
+</body>
+</html>
