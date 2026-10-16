@@ -344,7 +344,7 @@ function freshState() {
     tab: 'practice', view: 'home',
     bank: [], attempts: [], saved: null, lb: undefined,
     exam: null, result: null, rf: 'all',
-    setup: { count: null, minutes: null, touched: false, subj: [], shq: true, sho: false },
+    setup: { count: null, minutes: null, touched: false, subj: [], shq: true, sho: false, mode: 'unseen' },
     imp: { text: '', tag: '', parsed: null },
     q: '', confirm: '', confirmSubmit: false
   };
@@ -459,6 +459,30 @@ function doAuth() {
 function bankMap() { var m = new Map(); S.bank.forEach(function (q) { m.set(q.id, q); }); return m; }
 function subjects() { var m = {}; S.bank.forEach(function (q) { var k = q.t || 'Untagged'; m[k] = (m[k] || 0) + 1; }); return m; }
 function pool() { var f = S.setup.subj; return f.length ? S.bank.filter(function (q) { return f.indexOf(q.t || 'Untagged') >= 0; }) : S.bank; }
+/* Sort the questions in a selection by what this person did with them last time. */
+function classify(P) {
+  var latest = {};
+  S.attempts.slice().sort(function (a, b) { return b.finishedAt - a.finishedAt; }).forEach(function (a) {
+    (a.qids || []).forEach(function (id) { if (!(id in latest)) latest[id] = a.ans ? a.ans[id] : undefined; });
+  });
+  var r = { unseen: [], wrong: [], other: [] };
+  P.forEach(function (q) {
+    if (!(q.id in latest)) r.unseen.push(q.id);
+    else if (latest[q.id] !== q.a) r.wrong.push(q.id);
+    else r.other.push(q.id);
+  });
+  return r;
+}
+function pickIds(P, count, mode, shq) {
+  var info = classify(P);
+  function ord(a) { return shq ? shuffle(a) : a.slice(); }
+  var order;
+  if (mode === 'wrong') order = ord(info.wrong).concat(ord(info.unseen), ord(info.other));
+  else if (mode === 'unseen') order = ord(info.unseen).concat(ord(info.wrong), ord(info.other));
+  else order = ord(P.map(function (q) { return q.id; }));
+  var chosen = order.slice(0, count);
+  return shq ? shuffle(chosen) : chosen;
+}
 function clock(s) { var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ':' : '') + String(m).padStart(2, '0') + ':' + String(x).padStart(2, '0'); }
 function dur(s) { var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + 'h ' : '') + m + 'm ' + x + 's'; }
 function when(ts) { return new Date(ts).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
@@ -545,6 +569,13 @@ function homeView() {
     h += '<div><span class="lbl">Subjects (none selected means all)</span><div class="chips">' + keys.map(function (k) { return '<label class="chip"><input type="checkbox" data-subj="' + esc(k) + '"' + (st.subj.indexOf(k) >= 0 ? ' checked' : '') + '>' + esc(k) + ' <span class="sub mono">' + su[k] + '</span></label>'; }).join('') + '</div></div>';
   }
   h += '<div class="grid2"><div><label class="lbl" for="cnt">Number of questions (max ' + P.length + ')</label><input id="cnt" type="number" min="1" max="' + P.length + '" value="' + st.count + '"></div><div><label class="lbl" for="mins">Time limit in minutes</label><input id="mins" type="number" min="1" max="600" value="' + st.minutes + '"></div></div>';
+  var info = classify(P), mode = st.mode || 'unseen';
+  var modeText = {
+    unseen: 'Fills the paper with questions you have not had in a finished paper yet. When those run out it uses the ones you got wrong, then the rest.',
+    wrong: 'Fills the paper with questions you got wrong or skipped last time, then unseen ones, then the rest.',
+    random: 'Picks at random from the whole selection and does not remember earlier papers.'
+  };
+  h += '<div><label class="lbl" for="selmode">Which questions to use</label><select id="selmode"><option value="unseen"' + (mode === 'unseen' ? ' selected' : '') + '>Unseen questions first</option><option value="wrong"' + (mode === 'wrong' ? ' selected' : '') + '>Wrong answers first</option><option value="random"' + (mode === 'random' ? ' selected' : '') + '>Random</option></select><p class="sub" style="margin-top:6px"><strong>' + info.unseen.length + ' of ' + P.length + '</strong> not seen yet, <strong>' + info.wrong.length + '</strong> wrong or unanswered last time. ' + modeText[mode] + '</p></div>';
   h += '<div class="row" style="gap:8px 28px"><label class="check" for="shq"><input id="shq" type="checkbox"' + (st.shq ? ' checked' : '') + '> Shuffle question order</label><label class="check" for="sho"><input id="sho" type="checkbox"' + (st.sho ? ' checked' : '') + '> Shuffle options</label></div>';
   h += '<div class="row"><button class="btn btn-primary" type="button" data-act="start"' + (P.length ? '' : ' disabled') + '>Start exam</button><span class="sub">No answers are shown until you submit.</span></div></section>';
   var recent = S.attempts.slice(0, 3);
@@ -798,9 +829,7 @@ var A = {
     if (!(count >= 1)) { toast('Enter at least 1 question.'); return; }
     if (!(mins >= 1)) { toast('Enter a time limit of at least 1 minute.'); return; }
     count = Math.min(count, P.length);
-    var ids = P.map(function (q) { return q.id; });
-    if (st.shq) ids = shuffle(ids);
-    beginExam(ids.slice(0, count), mins, st.sho);
+    beginExam(pickIds(P, count, st.mode || 'unseen', st.shq), mins, st.sho);
   },
   resume: function () {
     S.exam = S.saved; if (!S.exam) return;
@@ -902,6 +931,7 @@ app.addEventListener('change', function (e) {
   var t = e.target, st = S.setup;
   if (t.id === 'shq') st.shq = t.checked;
   else if (t.id === 'sho') st.sho = t.checked;
+  else if (t.id === 'selmode') { st.mode = t.value; render(); }
   else if (t.dataset && t.dataset.subj != null) {
     var k = t.dataset.subj, i = st.subj.indexOf(k);
     if (t.checked && i < 0) st.subj.push(k); else if (!t.checked && i >= 0) st.subj.splice(i, 1);
