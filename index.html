@@ -346,7 +346,8 @@ function freshState() {
     exam: null, result: null, rf: 'all',
     setup: { count: null, minutes: null, touched: false, subj: [], shq: true, sho: false, mode: 'unseen' },
     imp: { text: '', tag: '', parsed: null },
-    q: '', confirm: '', confirmSubmit: false
+    q: '', confirm: '', confirmSubmit: false,
+    editId: null, ed: null, ren: null, bsub: ''
   };
 }
 function resetUser() {
@@ -612,37 +613,106 @@ function leaderboardView() {
 function manageView() {
   var h = '<div class="stack"><section class="card stack" aria-labelledby="add-h"><div><h2 id="add-h">Add questions</h2><p class="sub">Only admins see this page. Paste MCQs below, check the format, then add them for everyone. Questions already in the bank are skipped.</p></div>';
   h += '<details class="help"><summary>Format help</summary><div class="stack" style="margin-top:12px"><p class="sub">One blank line between questions. Options start with A) to E) (or A. to E.). Each question needs an Answer line. Explanation and Subject lines are optional. You can also mark the right option with a * in front. JSON is accepted too.</p><pre>' + esc(FORMAT_EXAMPLE) + '</pre><div><span class="lbl">Prompt to convert messy MCQs into this format</span><textarea class="ro-box" id="aiprompt" readonly>' + esc(AI_PROMPT) + '</textarea><div class="row" style="margin-top:8px"><button class="btn btn-sm" type="button" data-act="copyprompt">Copy prompt</button></div></div></div></details>';
-  h += '<div><label class="lbl" for="imptag">Subject for questions without one (optional)</label><input id="imptag" type="text" value="' + esc(S.imp.tag) + '" placeholder="e.g. Physiology"></div>';
+  h += '<div><label class="lbl" for="imptag">Subject for questions without one (optional)</label><input id="imptag" type="text" list="subjlist" autocomplete="off" value="' + esc(S.imp.tag) + '" placeholder="e.g. Physiology"></div>';
   h += '<div><label class="lbl" for="imptext">Questions</label><textarea id="imptext" spellcheck="false" placeholder="1. Question text&#10;A) option&#10;B) option&#10;C) option&#10;D) option&#10;Answer: B&#10;Explanation: optional">' + esc(S.imp.text) + '</textarea></div>';
   var pr = S.imp.parsed;
   if (pr) {
     h += '<div class="notice' + (pr.items.length ? '' : ' warn') + '"><strong>' + pr.items.length + ' question' + (pr.items.length === 1 ? '' : 's') + ' ready to add.</strong>' + (pr.issues.length ? ' ' + pr.issues.length + ' could not be read.' : '');
+    if (pr.items.length) h += importSummary(pr);
     if (pr.issues.length) h += '<ul class="issues">' + pr.issues.slice(0, 12).map(function (i) { return '<li>' + esc(i) + '</li>'; }).join('') + (pr.issues.length > 12 ? '<li>and ' + (pr.issues.length - 12) + ' more</li>' : '') + '</ul>';
     h += '</div>';
   }
   h += '<div class="row"><button class="btn" type="button" data-act="check">Check format</button><button class="btn btn-primary" type="button" data-act="import"' + (pr && pr.items.length && !S.busy ? '' : ' disabled') + '>' + (S.busy ? 'Adding...' : 'Add ' + (pr && pr.items.length ? pr.items.length + ' ' : '') + 'to bank') + '</button></div></section>';
-  h += '<section class="card stack" aria-labelledby="bank-h"><div class="row between"><div><h2 id="bank-h">Question bank (' + S.bank.length + ')</h2><p class="sub" id="bank-sum"></p></div><div class="row"><button class="btn btn-sm" type="button" data-act="samples">Add sample questions</button>' + (S.bank.length ? '<button class="btn btn-sm' + (S.confirm === 'all' ? ' btn-danger' : '') + '" type="button" data-act="delall">' + (S.confirm === 'all' ? 'Confirm: delete all ' + S.bank.length : 'Delete all') + '</button>' : '') + '</div></div>';
-  if (S.bank.length) h += '<div><label class="lbl" for="bsearch">Search</label><input id="bsearch" type="text" value="' + esc(S.q) + '" placeholder="Search questions or subjects"></div>';
+  h += '<section class="card stack" id="subjpanel" aria-labelledby="subj-h"></section><datalist id="subjlist"></datalist><section class="card stack" aria-labelledby="bank-h"><div class="row between"><div><h2 id="bank-h">Question bank (' + S.bank.length + ')</h2><p class="sub" id="bank-sum"></p></div><div class="row"><button class="btn btn-sm" type="button" data-act="samples">Add sample questions</button>' + (S.bank.length ? '<button class="btn btn-sm' + (S.confirm === 'all' ? ' btn-danger' : '') + '" type="button" data-act="delall">' + (S.confirm === 'all' ? 'Confirm: delete all ' + S.bank.length : 'Delete all') + '</button>' : '') + '</div></div>';
+  if (S.bank.length) h += '<div class="grid2"><div><label class="lbl" for="bsearch">Search</label><input id="bsearch" type="text" value="' + esc(S.q) + '" placeholder="Search questions or subjects"></div><div><label class="lbl" for="bsubj">Show subject</label><select id="bsubj"></select></div></div>';
   h += '<div id="banklist"></div></section></div>';
+  return h;
+}
+
+function importSummary(pr) {
+  var su = subjects(), g = {};
+  pr.items.forEach(function (it) { var k = it.t || 'Untagged'; g[k] = (g[k] || 0) + 1; });
+  var parts = Object.keys(g).sort().map(function (k) { return esc(k) + ': ' + g[k] + ' to add' + (su[k] ? ' (already ' + su[k] + ' in the bank)' : ' (new subject)'); });
+  return '<p class="sub" style="margin-top:6px">' + parts.join(' · ') + '. Questions already in the bank are skipped.</p>';
+}
+
+function fillSubjControls() {
+  var su = subjects(), keys = Object.keys(su).sort();
+  var dl = $('#subjlist');
+  if (dl) dl.innerHTML = keys.filter(function (k) { return k !== 'Untagged'; }).map(function (k) { return '<option value="' + esc(k) + '"></option>'; }).join('');
+  var sel = $('#bsubj');
+  if (sel) {
+    if (S.bsub && keys.indexOf(S.bsub) < 0) S.bsub = '';
+    sel.innerHTML = '<option value="">All subjects (' + S.bank.length + ')</option>' + keys.map(function (k) { return '<option value="' + esc(k) + '"' + (S.bsub === k ? ' selected' : '') + '>' + esc(k) + ' (' + su[k] + ')</option>'; }).join('');
+  }
+}
+
+function renNote() {
+  var r = S.ren; if (!r) return '';
+  var su = subjects(), to = r.to.trim(), n = su[r.from] || 0;
+  if (!to) return 'Type the new name.';
+  if (to === 'Untagged') return 'Pick a different name. Untagged is reserved for questions without a subject.';
+  if (to === r.from) return 'That is the same name.';
+  if (su[to]) return 'A subject called "' + to + '" already exists, so these ' + n + ' questions will be merged into it.';
+  return n + ' question' + (n === 1 ? '' : 's') + ' will move to "' + to + '".';
+}
+
+function renderSubjPanel() {
+  var el = $('#subjpanel'); if (!el) return;
+  var su = subjects(), keys = Object.keys(su).sort();
+  if (!keys.length) { el.innerHTML = '<div><h2 id="subj-h">Subjects</h2><p class="sub">Subjects appear here once you add questions.</p></div>'; return; }
+  var h = '<div><h2 id="subj-h">Subjects</h2><p class="sub">Rename a subject to change it on every question in it. A name that already exists merges the two. Friends\' old results keep the old name in their subject breakdown.</p></div><div>';
+  keys.forEach(function (k) {
+    var r = S.ren;
+    if (r && r.from === k) {
+      h += '<div class="qrow"><div class="qt"><label class="lbl" for="rename-to">New name for "' + esc(k) + '" (' + su[k] + ' questions)</label><input id="rename-to" type="text" list="subjlist" autocomplete="off" value="' + esc(r.to) + '"><p class="sub" id="rename-note" style="margin-top:6px">' + esc(renNote()) + '</p></div><div class="row"><button class="btn btn-primary btn-sm" type="button" data-act="rensave"' + (S.busy ? ' disabled' : '') + '>Save name</button><button class="btn btn-sm" type="button" data-act="rencancel">Cancel</button></div></div>';
+    } else {
+      h += '<div class="qrow"><div class="qt"><strong>' + esc(k) + '</strong> <span class="sub">' + su[k] + ' question' + (su[k] === 1 ? '' : 's') + '</span></div><button class="btn btn-sm" type="button" data-act="ren" data-k="' + esc(k) + '">Rename</button></div>';
+    }
+  });
+  el.innerHTML = h + '</div>';
+}
+
+function editForm() {
+  var d = S.ed;
+  var h = '<div class="qrow" style="display:block"><div class="stack" style="gap:12px"><strong>Edit question</strong>';
+  h += '<div><label class="lbl" for="ed-q">Question</label><textarea id="ed-q" style="min-height:90px;font-family:var(--font);font-size:.95rem" spellcheck="false">' + esc(d.q) + '</textarea></div>';
+  h += '<div><span class="lbl">Options (select the circle next to the correct one)</span><div class="stack" style="gap:8px">';
+  d.o.forEach(function (o, i) {
+    h += '<div class="row" style="flex-wrap:nowrap"><input type="radio" name="ed-a" id="ed-r-' + i + '" value="' + i + '"' + (d.a === i ? ' checked' : '') + ' aria-label="Option ' + LET[i] + ' is correct"><span class="mono" style="width:1.4em">' + LET[i] + '</span><input type="text" id="ed-o-' + i + '" value="' + esc(o) + '" aria-label="Option ' + LET[i] + ' text">' + (d.o.length > 2 ? '<button type="button" class="btn btn-sm" data-act="edremopt" data-i="' + i + '">Remove</button>' : '') + '</div>';
+  });
+  h += '</div>' + (d.o.length < 6 ? '<div style="margin-top:8px"><button type="button" class="btn btn-sm" data-act="edaddopt">Add option</button></div>' : '') + '</div>';
+  h += '<div><label class="lbl" for="ed-e">Explanation (optional)</label><textarea id="ed-e" style="min-height:70px;font-family:var(--font);font-size:.95rem">' + esc(d.e) + '</textarea></div>';
+  h += '<div><label class="lbl" for="ed-t">Subject</label><input id="ed-t" type="text" list="subjlist" autocomplete="off" value="' + esc(d.t) + '"></div>';
+  h += '<p class="sub">Changing the options or the correct answer also changes how past results are marked when friends review them. Their saved scores stay as they were.</p>';
+  h += '<div class="row"><button type="button" class="btn btn-primary" data-act="edsave"' + (S.busy ? ' disabled' : '') + '>Save changes</button><button type="button" class="btn" data-act="edcancel">Cancel</button></div></div></div>';
   return h;
 }
 
 function renderBankList() {
   var el = $('#banklist'); if (!el) return;
-  var sum = $('#bank-sum');
-  var su = subjects();
-  if (sum) sum.textContent = Object.keys(su).sort().map(function (k) { return k + ' ' + su[k]; }).join(' · ');
+  fillSubjControls();
   if (!S.bank.length) { el.innerHTML = '<p class="sub">Nothing here yet. Add questions above.</p>'; return; }
-  var f = norm(S.q);
-  var list = S.bank.map(function (q, i) { return { q: q, i: i }; }).filter(function (r) { return !f || norm(r.q.q + ' ' + (r.q.t || '')).indexOf(f) >= 0; });
+  var f = norm(S.q), sf = S.bsub;
+  var list = S.bank.map(function (q, i) { return { q: q, i: i }; }).filter(function (r) {
+    if (sf && (r.q.t || 'Untagged') !== sf) return false;
+    return !f || norm(r.q.q + ' ' + (r.q.t || '')).indexOf(f) >= 0;
+  });
   var shown = list.slice(0, 100);
   var h = shown.map(function (r) {
     var q = r.q, k = 'q:' + q.id, c = S.confirm === k;
-    return '<div class="qrow"><span class="qn">' + (r.i + 1) + '</span><div class="qt">' + esc(q.q.length > 200 ? q.q.slice(0, 200) + '...' : q.q) + '<div class="row" style="margin-top:4px;gap:6px">' + (q.t ? '<span class="pill subj">' + esc(q.t) + '</span>' : '') + '<span class="sub">Answer ' + LET[q.a] + ' · ' + q.o.length + ' options</span></div></div><button class="btn btn-sm' + (c ? ' btn-danger' : '') + '" type="button" data-act="delq" data-id="' + esc(q.id) + '">' + (c ? 'Confirm' : 'Delete') + '</button></div>';
+    if (S.editId === q.id && S.ed) return editForm();
+    return '<div class="qrow"><span class="qn">' + (r.i + 1) + '</span><div class="qt">' + esc(q.q.length > 200 ? q.q.slice(0, 200) + '...' : q.q) + '<div class="row" style="margin-top:4px;gap:6px">' + (q.t ? '<span class="pill subj">' + esc(q.t) + '</span>' : '') + '<span class="sub">Answer ' + LET[q.a] + ' · ' + q.o.length + ' options</span></div></div><div class="row" style="flex:none"><button class="btn btn-sm" type="button" data-act="edit" data-id="' + esc(q.id) + '">Edit</button><button class="btn btn-sm' + (c ? ' btn-danger' : '') + '" type="button" data-act="delq" data-id="' + esc(q.id) + '">' + (c ? 'Confirm' : 'Delete') + '</button></div></div>';
   }).join('');
-  if (!list.length) h = '<p class="sub">No questions match your search.</p>';
-  if (list.length > shown.length) h += '<p class="sub" style="margin-top:10px">Showing the first ' + shown.length + ' of ' + list.length + ' matches. Search to narrow it down.</p>';
+  if (!list.length) h = '<p class="sub">No questions match.</p>';
+  if (list.length > shown.length) h += '<p class="sub" style="margin-top:10px">Showing the first ' + shown.length + ' of ' + list.length + ' matches. Search or pick a subject to narrow it down.</p>';
   el.innerHTML = h;
+}
+
+function renderManageParts() {
+  var hh = $('#bank-h'); if (hh) hh.textContent = 'Question bank (' + S.bank.length + ')';
+  renderSubjPanel();
+  renderBankList();
 }
 
 function palette(ex, clickable) {
@@ -744,7 +814,7 @@ function render() {
   else if (S.tab === 'leaderboard') h = shell(leaderboardView());
   else h = shell(homeView());
   app.innerHTML = h;
-  if (S.uid && S.view === 'home' && S.tab === 'manage' && S.isAdmin) renderBankList();
+  if (S.uid && S.view === 'home' && S.tab === 'manage' && S.isAdmin) renderManageParts();
 }
 
 /* ---------- exam flow ---------- */
@@ -805,7 +875,7 @@ function loadLB() {
 /* ---------- actions ---------- */
 var A = {
   tab: function (t) {
-    S.tab = t.dataset.tab; S.view = 'home'; S.confirm = '';
+    S.tab = t.dataset.tab; S.view = 'home'; S.confirm = ''; S.editId = null; S.ed = null; S.ren = null;
     if (S.tab === 'leaderboard') { loadLB(); } else { render(); }
     top();
   },
@@ -834,7 +904,7 @@ var A = {
   resume: function () {
     S.exam = S.saved; if (!S.exam) return;
     var M = bankMap();
-    if (S.exam.qids.some(function (id) { return !M.get(id); })) { toast('Some questions in that paper were removed from the bank. It was discarded.'); LS.del('flp.session.' + S.uid); S.saved = null; S.exam = null; render(); return; }
+    if (S.exam.qids.some(function (id) { var q = M.get(id); return !q || !S.exam.perm[id] || S.exam.perm[id].length !== q.o.length; })) { toast('Some questions in that paper were removed or changed. It was discarded.'); LS.del('flp.session.' + S.uid); S.saved = null; S.exam = null; render(); return; }
     if (S.exam.endAt <= Date.now()) { submitExam(); return; }
     S.view = 'exam'; render(); startTick(); top();
   },
@@ -901,6 +971,67 @@ var A = {
       S.bank = []; S.setup.count = null; S.setup.subj = []; render(); toast('Question bank cleared.');
     });
   },
+  edit: function (t) {
+    var q = S.bank.filter(function (x) { return x.id === t.dataset.id; })[0]; if (!q) return;
+    S.editId = q.id; S.confirm = ''; S.ed = { q: q.q, o: q.o.slice(), a: q.a, e: q.e || '', t: q.t || '' };
+    renderBankList();
+    var el = $('#ed-q'); if (el) { el.focus(); if (el.scrollIntoView) el.scrollIntoView({ block: 'center' }); }
+  },
+  edcancel: function () { S.editId = null; S.ed = null; renderBankList(); },
+  edaddopt: function () { if (S.ed && S.ed.o.length < 6) { S.ed.o.push(''); renderBankList(); var el = $('#ed-o-' + (S.ed.o.length - 1)); if (el) el.focus(); } },
+  edremopt: function (t) {
+    var i = Number(t.dataset.i), d = S.ed; if (!d || d.o.length <= 2) return;
+    d.o.splice(i, 1);
+    if (d.a === i) d.a = -1; else if (d.a > i) d.a--;
+    renderBankList();
+  },
+  edsave: function () {
+    var d = S.ed, id = S.editId; if (!d || !id || S.busy) return;
+    var stem = d.q.trim();
+    if (!stem) { toast('The question text cannot be empty.'); return; }
+    var opts = [], map = -1;
+    d.o.forEach(function (o, i) { var tx = o.trim(); if (tx) { if (i === d.a) map = opts.length; opts.push(tx); } });
+    if (opts.length < 2) { toast('Keep at least 2 options with text.'); return; }
+    if (map < 0) { toast('Select the correct answer, and make sure that option has text.'); return; }
+    if (S.bank.some(function (x) { return x.id !== id && norm(x.q) === norm(stem); })) { toast('Another question already has exactly this text.'); return; }
+    S.busy = true; renderBankList();
+    sb.from('questions').update({ subject: d.t.trim(), stem: stem, options: opts, answer: map, explanation: d.e.trim() }).eq('id', id).select().then(function (r) {
+      S.busy = false;
+      if (r.error) { toast('Could not save: ' + errText(r.error)); renderBankList(); return; }
+      if (!r.data || !r.data.length) { toast('You do not have permission to edit questions.'); renderBankList(); return; }
+      var nq = fromQ(r.data[0]);
+      S.bank = S.bank.map(function (x) { return x.id === id ? nq : x; });
+      S.editId = null; S.ed = null; toast('Question saved.'); renderManageParts();
+    });
+  },
+  ren: function (t) {
+    var k = t.dataset.k;
+    S.ren = { from: k, to: k === 'Untagged' ? '' : k };
+    renderSubjPanel();
+    var el = $('#rename-to'); if (el) { el.focus(); el.select(); }
+  },
+  rencancel: function () { S.ren = null; renderSubjPanel(); },
+  rensave: function () {
+    var r = S.ren; if (!r || S.busy) return;
+    var to = r.to.trim(), from = r.from;
+    if (!to) { toast('Type the new name.'); return; }
+    if (to === 'Untagged') { toast('Pick a different name. Untagged is reserved for questions without a subject.'); return; }
+    if (to === from) { toast('That is the same name.'); return; }
+    var oldVal = from === 'Untagged' ? '' : from;
+    S.busy = true; renderSubjPanel();
+    sb.from('questions').update({ subject: to }).eq('subject', oldVal).select('id').then(function (res) {
+      S.busy = false;
+      if (res.error) { toast('Could not rename: ' + errText(res.error)); renderSubjPanel(); return; }
+      if (!res.data || !res.data.length) { toast('No questions were changed. You may not have permission.'); renderSubjPanel(); return; }
+      S.bank.forEach(function (q) { if ((q.t || '') === oldVal) q.t = to; });
+      var st = S.setup;
+      st.subj = st.subj.map(function (k) { return k === from ? to : k; }).filter(function (k, i, a) { return a.indexOf(k) === i; });
+      st.count = null;
+      if (S.bsub === from) S.bsub = to;
+      S.ren = null; toast(res.data.length + ' question' + (res.data.length === 1 ? '' : 's') + ' moved to "' + to + '".');
+      renderManageParts();
+    });
+  },
   copyprompt: function () {
     var box = $('#aiprompt');
     function fallback() { if (box) { box.focus(); box.select(); } toast('Copy blocked here. The prompt is selected, press Ctrl+C.'); }
@@ -924,6 +1055,11 @@ app.addEventListener('input', function (e) {
   else if (id === 'imptext') { S.imp.text = e.target.value; S.imp.parsed = null; }
   else if (id === 'imptag') S.imp.tag = e.target.value;
   else if (id === 'bsearch') { S.q = e.target.value; renderBankList(); }
+  else if (id === 'ed-q' && S.ed) S.ed.q = e.target.value;
+  else if (id === 'ed-e' && S.ed) S.ed.e = e.target.value;
+  else if (id === 'ed-t' && S.ed) S.ed.t = e.target.value;
+  else if (/^ed-o-\d+$/.test(id) && S.ed) S.ed.o[Number(id.slice(5))] = e.target.value;
+  else if (id === 'rename-to' && S.ren) { S.ren.to = e.target.value; var nn = $('#rename-note'); if (nn) nn.textContent = renNote(); }
   else if (id === 'cnt') { st.count = Math.floor(Number(e.target.value)) || 1; if (!st.touched) { st.minutes = Math.max(1, st.count); var m = $('#mins'); if (m) m.value = st.minutes; } }
   else if (id === 'mins') { st.minutes = Number(e.target.value) || 1; st.touched = true; }
 });
@@ -932,6 +1068,8 @@ app.addEventListener('change', function (e) {
   if (t.id === 'shq') st.shq = t.checked;
   else if (t.id === 'sho') st.sho = t.checked;
   else if (t.id === 'selmode') { st.mode = t.value; render(); }
+  else if (t.id === 'bsubj') { S.bsub = t.value; renderBankList(); }
+  else if (t.name === 'ed-a' && S.ed) { S.ed.a = Number(t.value); }
   else if (t.dataset && t.dataset.subj != null) {
     var k = t.dataset.subj, i = st.subj.indexOf(k);
     if (t.checked && i < 0) st.subj.push(k); else if (!t.checked && i >= 0) st.subj.splice(i, 1);
