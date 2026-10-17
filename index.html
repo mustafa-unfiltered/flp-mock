@@ -386,10 +386,18 @@ function fetchAll(table, orderCol, asc) {
   return page(0);
 }
 
-function addQuestions(items) {
-  var have = {}; S.bank.forEach(function (q) { have[norm(q.q)] = 1; });
+/* Two questions are duplicates only when the question text AND every option match, in the same order.
+   Capital letters and extra spaces are ignored. Same stem alone, or same options alone, is not a duplicate. */
+function dupKey(q, o) { return norm(q) + '||' + o.map(norm).join('||'); }
+function splitDups(items) {
+  var have = {}; S.bank.forEach(function (q) { have[dupKey(q.q, q.o)] = 1; });
   var fresh = [], dup = 0;
-  items.forEach(function (it) { var k = norm(it.q); if (have[k]) { dup++; return; } have[k] = 1; fresh.push(it); });
+  items.forEach(function (it) { var k = dupKey(it.q, it.o); if (have[k]) { dup++; return; } have[k] = 1; fresh.push(it); });
+  return { fresh: fresh, dup: dup };
+}
+
+function addQuestions(items) {
+  var sp = splitDups(items), fresh = sp.fresh, dup = sp.dup;
   var added = [], p = Promise.resolve();
   for (var i = 0; i < fresh.length; i += 200) {
     (function (chunk) {
@@ -611,29 +619,31 @@ function leaderboardView() {
 }
 
 function manageView() {
-  var h = '<div class="stack"><section class="card stack" aria-labelledby="add-h"><div><h2 id="add-h">Add questions</h2><p class="sub">Only admins see this page. Paste MCQs below, check the format, then add them for everyone. Questions already in the bank are skipped.</p></div>';
+  var h = '<div class="stack"><section class="card stack" aria-labelledby="add-h"><div><h2 id="add-h">Add questions</h2><p class="sub">Only admins see this page. Paste MCQs below, check the format, then add them for everyone. Only exact copies are skipped: the same question text with the same options as one already in the bank.</p></div>';
   h += '<details class="help"><summary>Format help</summary><div class="stack" style="margin-top:12px"><p class="sub">One blank line between questions. Options start with A) to E) (or A. to E.). Each question needs an Answer line. Explanation and Subject lines are optional. You can also mark the right option with a * in front. JSON is accepted too.</p><pre>' + esc(FORMAT_EXAMPLE) + '</pre><div><span class="lbl">Prompt to convert messy MCQs into this format</span><textarea class="ro-box" id="aiprompt" readonly>' + esc(AI_PROMPT) + '</textarea><div class="row" style="margin-top:8px"><button class="btn btn-sm" type="button" data-act="copyprompt">Copy prompt</button></div></div></div></details>';
   h += '<div><label class="lbl" for="imptag">Subject for questions without one (optional)</label><input id="imptag" type="text" list="subjlist" autocomplete="off" value="' + esc(S.imp.tag) + '" placeholder="e.g. Physiology"></div>';
   h += '<div><label class="lbl" for="imptext">Questions</label><textarea id="imptext" spellcheck="false" placeholder="1. Question text&#10;A) option&#10;B) option&#10;C) option&#10;D) option&#10;Answer: B&#10;Explanation: optional">' + esc(S.imp.text) + '</textarea></div>';
   var pr = S.imp.parsed;
   if (pr) {
-    h += '<div class="notice' + (pr.items.length ? '' : ' warn') + '"><strong>' + pr.items.length + ' question' + (pr.items.length === 1 ? '' : 's') + ' ready to add.</strong>' + (pr.issues.length ? ' ' + pr.issues.length + ' could not be read.' : '');
-    if (pr.items.length) h += importSummary(pr);
+    var sp = splitDups(pr.items);
+    h += '<div class="notice' + (sp.fresh.length ? '' : ' warn') + '"><strong>' + sp.fresh.length + ' question' + (sp.fresh.length === 1 ? '' : 's') + ' ready to add.</strong>' + (sp.dup ? ' ' + sp.dup + ' skipped as exact copies (same text and same options already in the bank or repeated in your paste).' : '') + (pr.issues.length ? ' ' + pr.issues.length + ' could not be read.' : '');
+    if (sp.fresh.length) h += importSummary(sp.fresh);
     if (pr.issues.length) h += '<ul class="issues">' + pr.issues.slice(0, 12).map(function (i) { return '<li>' + esc(i) + '</li>'; }).join('') + (pr.issues.length > 12 ? '<li>and ' + (pr.issues.length - 12) + ' more</li>' : '') + '</ul>';
     h += '</div>';
   }
-  h += '<div class="row"><button class="btn" type="button" data-act="check">Check format</button><button class="btn btn-primary" type="button" data-act="import"' + (pr && pr.items.length && !S.busy ? '' : ' disabled') + '>' + (S.busy ? 'Adding...' : 'Add ' + (pr && pr.items.length ? pr.items.length + ' ' : '') + 'to bank') + '</button></div></section>';
+  var nAdd = pr ? splitDups(pr.items).fresh.length : 0;
+  h += '<div class="row"><button class="btn" type="button" data-act="check">Check format</button><button class="btn btn-primary" type="button" data-act="import"' + (nAdd && !S.busy ? '' : ' disabled') + '>' + (S.busy ? 'Adding...' : 'Add ' + (nAdd ? nAdd + ' ' : '') + 'to bank') + '</button></div></section>';
   h += '<section class="card stack" id="subjpanel" aria-labelledby="subj-h"></section><datalist id="subjlist"></datalist><section class="card stack" aria-labelledby="bank-h"><div class="row between"><div><h2 id="bank-h">Question bank (' + S.bank.length + ')</h2><p class="sub" id="bank-sum"></p></div><div class="row"><button class="btn btn-sm" type="button" data-act="samples">Add sample questions</button>' + (S.bank.length ? '<button class="btn btn-sm' + (S.confirm === 'all' ? ' btn-danger' : '') + '" type="button" data-act="delall">' + (S.confirm === 'all' ? 'Confirm: delete all ' + S.bank.length : 'Delete all') + '</button>' : '') + '</div></div>';
   if (S.bank.length) h += '<div class="grid2"><div><label class="lbl" for="bsearch">Search</label><input id="bsearch" type="text" value="' + esc(S.q) + '" placeholder="Search questions or subjects"></div><div><label class="lbl" for="bsubj">Show subject</label><select id="bsubj"></select></div></div>';
   h += '<div id="banklist"></div></section></div>';
   return h;
 }
 
-function importSummary(pr) {
+function importSummary(items) {
   var su = subjects(), g = {};
-  pr.items.forEach(function (it) { var k = it.t || 'Untagged'; g[k] = (g[k] || 0) + 1; });
+  items.forEach(function (it) { var k = it.t || 'Untagged'; g[k] = (g[k] || 0) + 1; });
   var parts = Object.keys(g).sort().map(function (k) { return esc(k) + ': ' + g[k] + ' to add' + (su[k] ? ' (already ' + su[k] + ' in the bank)' : ' (new subject)'); });
-  return '<p class="sub" style="margin-top:6px">' + parts.join(' · ') + '. Questions already in the bank are skipped.</p>';
+  return '<p class="sub" style="margin-top:6px">' + parts.join(' · ') + '.</p>';
 }
 
 function fillSubjControls() {
@@ -993,7 +1003,8 @@ var A = {
     d.o.forEach(function (o, i) { var tx = o.trim(); if (tx) { if (i === d.a) map = opts.length; opts.push(tx); } });
     if (opts.length < 2) { toast('Keep at least 2 options with text.'); return; }
     if (map < 0) { toast('Select the correct answer, and make sure that option has text.'); return; }
-    if (S.bank.some(function (x) { return x.id !== id && norm(x.q) === norm(stem); })) { toast('Another question already has exactly this text.'); return; }
+    var mine = dupKey(stem, opts);
+    if (S.bank.some(function (x) { return x.id !== id && dupKey(x.q, x.o) === mine; })) { toast('Another question is an exact copy of this one (same text and same options).'); return; }
     S.busy = true; renderBankList();
     sb.from('questions').update({ subject: d.t.trim(), stem: stem, options: opts, answer: map, explanation: d.e.trim() }).eq('id', id).select().then(function (r) {
       S.busy = false;
