@@ -206,6 +206,7 @@ tr.me td { background: var(--accent-soft); }
 .ro.correct .tag { color: var(--ok); }
 .ro.wrong { background: var(--bad-soft); border-color: var(--bad); }
 .ro.wrong .tag { color: var(--bad); }
+.also { margin: 14px 0 0; padding-top: 10px; border-top: 1px dashed var(--line); font-size: .84rem; color: var(--muted); }
 .exp { margin-top: 12px; padding: 10px 12px; background: var(--surface2); border-radius: 6px; font-size: .9rem; overflow-wrap: anywhere; }
 
 .help pre { margin: 0; padding: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; overflow-x: auto; font-family: var(--mono); font-size: .82rem; line-height: 1.55; }
@@ -347,7 +348,7 @@ function freshState() {
     setup: { count: null, minutes: null, touched: false, subj: [], shq: true, sho: false, mode: 'unseen' },
     imp: { text: '', tag: '', parsed: null },
     q: '', confirm: '', confirmSubmit: false,
-    editId: null, ed: null, ren: null, bsub: ''
+    editId: null, ed: null, ren: null, bsub: '', copyReport: null, bcopies: false
   };
 }
 function resetUser() {
@@ -386,28 +387,149 @@ function fetchAll(table, orderCol, asc) {
   return page(0);
 }
 
-/* Two questions are duplicates only when the question text AND every option match, in the same order.
-   Capital letters and extra spaces are ignored. Same stem alone, or same options alone, is not a duplicate. */
+/* Exact copies: the question text and every option match, in the same order (capitals and extra spaces ignored).
+   Copies are allowed. They are only reported, so the admin can see which paper each one is also in. */
 function dupKey(q, o) { return norm(q) + '||' + o.map(norm).join('||'); }
-function splitDups(items) {
-  var have = {}; S.bank.forEach(function (q) { have[dupKey(q.q, q.o)] = 1; });
-  var fresh = [], dup = 0;
-  items.forEach(function (it) { var k = dupKey(it.q, it.o); if (have[k]) { dup++; return; } have[k] = 1; fresh.push(it); });
-  return { fresh: fresh, dup: dup };
+function plabel(t) { return t || 'Untagged'; }
+//#sim-start
+/* Near-copy detection: "the same question asked in a different way".
+   It compares the key words of the question (rare words count more), the correct answer, and the options.
+   It reads words, not meaning, so it catches rewordings that keep the key terms and the same correct answer. */
+var SIM_THRESH = 0.6;
+var STOP = {};
+('a an the of in on at to for with from by and or not is are was were be been being as it its this that these those which what who whom whose when where why how do does did can could may might will would shall should has have had ' +
+ 'following follows below above all none any both either neither only most more least less than then also about regarding concerning true false correct incorrect except best one ' +
+ 'due statement statements option options choose select identify give given commonly usually typically major principal main chief mostly').split(' ').forEach(function (w) { STOP[w] = 1; });
+var SYN = { innervate: 'supply', innervates: 'supply', innervated: 'supply', innervation: 'supply', innervating: 'supply', supplies: 'supply', supplied: 'supply', supplying: 'supply',
+  result: 'cause', results: 'cause', resulting: 'cause', resulted: 'cause', cause: 'cause', causes: 'cause', caused: 'cause', causing: 'cause', leads: 'cause', lead: 'cause', leading: 'cause' };
+function stemWord(w) {
+  if (SYN[w]) return SYN[w];
+  if (/^[0-9]+$/.test(w)) return w;
+  var x = w;
+  if (x.length > 4 && /ies$/.test(x)) x = x.slice(0, -3) + 'y';
+  else if (x.length > 4 && /(sses|xes|ches|shes)$/.test(x)) x = x.slice(0, -2);
+  else if (x.length > 3 && /s$/.test(x) && !/(ss|us|is)$/.test(x)) x = x.slice(0, -1);
+  if (x.length > 5 && /ing$/.test(x)) x = x.slice(0, -3);
+  else if (x.length > 4 && /ed$/.test(x)) x = x.slice(0, -2);
+  if (x.length > 4 && /e$/.test(x)) x = x.slice(0, -1);
+  return x;
 }
+function tok(str, dropStop) {
+  var out = [];
+  String(str).toLowerCase().split(/[^a-z0-9]+/).forEach(function (w) {
+    if (!w || (dropStop && STOP[w])) return;
+    out.push(stemWord(w));
+  });
+  return out;
+}
+function toSet(arr) { var o = {}; arr.forEach(function (t) { o[t] = 1; }); return o; }
+function jac(A, B) {
+  var inter = 0, uni = 0, t;
+  for (t in A) { uni++; if (B[t]) inter++; }
+  for (t in B) if (!A[t]) uni++;
+  return uni ? inter / uni : 0;
+}
+function simPrep(q, o, a) {
+  var stem = toSet(tok(q, true)), n = 0, opts = {}, t;
+  for (t in stem) n++;
+  o.forEach(function (x) { tok(x, false).forEach(function (w) { opts[w] = 1; }); });
+  return { stem: stem, n: n, ans: toSet(tok(o[a] || '', false)), opts: opts, key: dupKey(q, o) };
+}
+function simScore(A, B, idf) {
+  if (A.key === B.key) return { score: 1, exact: true };
+  var inter = 0, uni = 0, wa = 0, wb = 0, t, w;
+  for (t in A.stem) { w = idf(t); wa += w; uni += w; if (B.stem[t]) inter += w; }
+  for (t in B.stem) { w = idf(t); wb += w; if (!A.stem[t]) uni += w; }
+  /* One question must say (nearly) everything the other says; if each has its own different key words it is a different question. */
+  if (!uni || inter / Math.min(wa, wb) < 0.8) return null;
+  var ss = inter / uni;
+  ss *= Math.min(1, Math.min(A.n, B.n) / 3);
+  var sa = jac(A.ans, B.ans);
+  if (sa < 0.6 || ss < 0.3) return null;
+  var score = 0.5 * ss + 0.3 * sa + 0.2 * jac(A.opts, B.opts);
+  return score >= SIM_THRESH ? { score: score, exact: false } : null;
+}
+var SIM = { ref: null, len: -1 };
+function simBuild() {
+  if (SIM.ref === S.bank && SIM.len === S.bank.length) return;
+  var ents = S.bank.map(function (q) { return { id: q.id, q: q, p: simPrep(q.q, q.o, q.a) }; });
+  var df = {}, idx = {}, byKey = {}, byId = {}, nb = {}, t;
+  ents.forEach(function (e, i) {
+    byId[e.id] = e;
+    (byKey[e.p.key] = byKey[e.p.key] || []).push(i);
+    for (t in e.p.stem) { df[t] = (df[t] || 0) + 1; (idx[t] = idx[t] || []).push(i); }
+  });
+  var N = ents.length;
+  var idf = function (x) { return Math.log(1 + (N + 1) / (Math.max(df[x] || 0, 1) + 1)); };
+  function link(a, b, r) {
+    (nb[a.id] = nb[a.id] || []).push({ id: b.id, score: r.score, exact: r.exact });
+    (nb[b.id] = nb[b.id] || []).push({ id: a.id, score: r.score, exact: r.exact });
+  }
+  ents.forEach(function (e, i) {
+    var seen = {}, k, j, r;
+    var same = byKey[e.p.key];
+    for (k = 0; k < same.length; k++) { j = same[k]; if (j <= i) continue; seen[j] = 1; link(e, ents[j], { score: 1, exact: true }); }
+    for (t in e.p.stem) {
+      var post = idx[t]; if (post.length > 300) continue;
+      for (k = 0; k < post.length; k++) {
+        j = post[k]; if (j <= i || seen[j]) continue; seen[j] = 1;
+        r = simScore(e.p, ents[j].p, idf); if (r) link(e, ents[j], r);
+      }
+    }
+  });
+  SIM = { ref: S.bank, len: N, ents: ents, idx: idx, byKey: byKey, byId: byId, idf: idf, nb: nb };
+}
+function neighborsOf(id) { simBuild(); return SIM.nb[id] || []; }
+/* Papers (subjects) where the same or a very similar question also lives. */
+function alsoIn(q, includeSame) {
+  var own = plabel(q.t), seen = {}, out = [];
+  neighborsOf(q.id).forEach(function (n) {
+    var e = SIM.byId[n.id]; if (!e) return;
+    var l = plabel(e.q.t);
+    if (l === own && !includeSame) return;
+    if (!seen[l]) { seen[l] = 1; out.push(l + (l === own ? ' (same paper)' : '')); }
+  });
+  return out.sort();
+}
+/* For rows about to be added: which ones look like a copy of something in the bank or earlier in the same upload. */
+function simNew(items) {
+  simBuild();
+  var preps = items.map(function (it) { return simPrep(it.q, it.o, it.a); }), rows = [];
+  items.forEach(function (it, i) {
+    var P = preps[i], seen = {}, nbs = [], t, k, j, r;
+    function add(text, label, r2) { nbs.push({ q: text, t: label, exact: r2.exact, score: r2.score }); }
+    (SIM.byKey[P.key] || []).forEach(function (bi) { seen[bi] = 1; add(SIM.ents[bi].q.q, plabel(SIM.ents[bi].q.t), { score: 1, exact: true }); });
+    for (t in P.stem) {
+      var post = SIM.idx[t]; if (!post || post.length > 300) continue;
+      for (k = 0; k < post.length; k++) {
+        j = post[k]; if (seen[j]) continue; seen[j] = 1;
+        r = simScore(P, SIM.ents[j].p, SIM.idf); if (r) add(SIM.ents[j].q.q, plabel(SIM.ents[j].q.t), r);
+      }
+    }
+    for (j = 0; j < i; j++) {
+      r = simScore(P, preps[j], SIM.idf); if (r) add(items[j].q, plabel(items[j].t), r);
+    }
+    if (nbs.length) {
+      nbs.sort(function (x, y) { return y.score - x.score; });
+      rows.push({ q: it.q, t: plabel(it.t), nbs: nbs });
+    }
+  });
+  return rows;
+}
+//#sim-end
 
 function addQuestions(items) {
-  var sp = splitDups(items), fresh = sp.fresh, dup = sp.dup;
+  var copies = simNew(items);
   var added = [], p = Promise.resolve();
-  for (var i = 0; i < fresh.length; i += 200) {
+  for (var i = 0; i < items.length; i += 200) {
     (function (chunk) {
       p = p.then(function () { return sb.from('questions').insert(chunk.map(toQ)).select(); }).then(function (r) {
         if (r.error) throw r.error;
         added = added.concat((r.data || []).map(fromQ));
       });
-    })(fresh.slice(i, i + 200));
+    })(items.slice(i, i + 200));
   }
-  return p.then(function () { return { added: added, dup: dup }; }, function (e) { S.bank = S.bank.concat(added); throw e; });
+  return p.then(function () { return { added: added, copies: copies }; }, function (e) { S.bank = S.bank.concat(added); throw e; });
 }
 
 function saveAttempt(a) {
@@ -467,17 +589,27 @@ function doAuth() {
 /* ---------- helpers ---------- */
 function bankMap() { var m = new Map(); S.bank.forEach(function (q) { m.set(q.id, q); }); return m; }
 function subjects() { var m = {}; S.bank.forEach(function (q) { var k = q.t || 'Untagged'; m[k] = (m[k] || 0) + 1; }); return m; }
-function pool() { var f = S.setup.subj; return f.length ? S.bank.filter(function (q) { return f.indexOf(q.t || 'Untagged') >= 0; }) : S.bank; }
+function pool() {
+  var f = S.setup.subj, seen = {}, out = [];
+  var list = f.length ? S.bank.filter(function (q) { return f.indexOf(q.t || 'Untagged') >= 0; }) : S.bank;
+  list.forEach(function (q) { var k = dupKey(q.q, q.o); if (seen[k]) return; seen[k] = 1; out.push(q); });
+  return out;
+}
 /* Sort the questions in a selection by what this person did with them last time. */
 function classify(P) {
-  var latest = {};
+  var M = bankMap(), latest = {};
   S.attempts.slice().sort(function (a, b) { return b.finishedAt - a.finishedAt; }).forEach(function (a) {
-    (a.qids || []).forEach(function (id) { if (!(id in latest)) latest[id] = a.ans ? a.ans[id] : undefined; });
+    (a.qids || []).forEach(function (id) {
+      var q = M.get(id); if (!q) return;
+      var k = dupKey(q.q, q.o);
+      if (!(k in latest)) latest[k] = a.ans ? a.ans[id] === q.a : false;
+    });
   });
   var r = { unseen: [], wrong: [], other: [] };
   P.forEach(function (q) {
-    if (!(q.id in latest)) r.unseen.push(q.id);
-    else if (latest[q.id] !== q.a) r.wrong.push(q.id);
+    var k = dupKey(q.q, q.o);
+    if (!(k in latest)) r.unseen.push(q.id);
+    else if (!latest[k]) r.wrong.push(q.id);
     else r.other.push(q.id);
   });
   return r;
@@ -619,24 +751,44 @@ function leaderboardView() {
 }
 
 function manageView() {
-  var h = '<div class="stack"><section class="card stack" aria-labelledby="add-h"><div><h2 id="add-h">Add questions</h2><p class="sub">Only admins see this page. Paste MCQs below, check the format, then add them for everyone. Only exact copies are skipped: the same question text with the same options as one already in the bank.</p></div>';
+  var h = '<div class="stack"><section class="card stack" aria-labelledby="add-h"><div><h2 id="add-h">Add questions</h2><p class="sub">Only admins see this page. Paste MCQs below, check the format, then add them for everyone. Copies and near-copies (the same question asked in a different way) are added too. Check format tells you how many look like copies. After adding, you get a list of which paper each one is also in.</p></div>';
   h += '<details class="help"><summary>Format help</summary><div class="stack" style="margin-top:12px"><p class="sub">One blank line between questions. Options start with A) to E) (or A. to E.). Each question needs an Answer line. Explanation and Subject lines are optional. You can also mark the right option with a * in front. JSON is accepted too.</p><pre>' + esc(FORMAT_EXAMPLE) + '</pre><div><span class="lbl">Prompt to convert messy MCQs into this format</span><textarea class="ro-box" id="aiprompt" readonly>' + esc(AI_PROMPT) + '</textarea><div class="row" style="margin-top:8px"><button class="btn btn-sm" type="button" data-act="copyprompt">Copy prompt</button></div></div></div></details>';
   h += '<div><label class="lbl" for="imptag">Subject for questions without one (optional)</label><input id="imptag" type="text" list="subjlist" autocomplete="off" value="' + esc(S.imp.tag) + '" placeholder="e.g. Physiology"></div>';
   h += '<div><label class="lbl" for="imptext">Questions</label><textarea id="imptext" spellcheck="false" placeholder="1. Question text&#10;A) option&#10;B) option&#10;C) option&#10;D) option&#10;Answer: B&#10;Explanation: optional">' + esc(S.imp.text) + '</textarea></div>';
   var pr = S.imp.parsed;
   if (pr) {
-    var sp = splitDups(pr.items);
-    h += '<div class="notice' + (sp.fresh.length ? '' : ' warn') + '"><strong>' + sp.fresh.length + ' question' + (sp.fresh.length === 1 ? '' : 's') + ' ready to add.</strong>' + (sp.dup ? ' ' + sp.dup + ' skipped as exact copies (same text and same options already in the bank or repeated in your paste).' : '') + (pr.issues.length ? ' ' + pr.issues.length + ' could not be read.' : '');
-    if (sp.fresh.length) h += importSummary(sp.fresh);
+    var cr = S.imp.sim || [], nn = pr.items.length;
+    h += '<div class="notice' + (nn ? '' : ' warn') + '"><strong>' + nn + ' question' + (nn === 1 ? '' : 's') + ' ready to add.</strong>' + (cr.length ? ' ' + cr.length + ' of them look like ' + (cr.length === 1 ? 'a copy' : 'copies') + ' of questions already in the bank or earlier in your paste (exact, or the same question asked in a different way). They will still be added.' : '') + (pr.issues.length ? ' ' + pr.issues.length + ' could not be read.' : '');
+    if (nn) h += importSummary(pr.items);
     if (pr.issues.length) h += '<ul class="issues">' + pr.issues.slice(0, 12).map(function (i) { return '<li>' + esc(i) + '</li>'; }).join('') + (pr.issues.length > 12 ? '<li>and ' + (pr.issues.length - 12) + ' more</li>' : '') + '</ul>';
     h += '</div>';
   }
-  var nAdd = pr ? splitDups(pr.items).fresh.length : 0;
+  var nAdd = pr ? pr.items.length : 0;
   h += '<div class="row"><button class="btn" type="button" data-act="check">Check format</button><button class="btn btn-primary" type="button" data-act="import"' + (nAdd && !S.busy ? '' : ' disabled') + '>' + (S.busy ? 'Adding...' : 'Add ' + (nAdd ? nAdd + ' ' : '') + 'to bank') + '</button></div></section>';
+  h += '<div id="copyreport"></div>';
   h += '<section class="card stack" id="subjpanel" aria-labelledby="subj-h"></section><datalist id="subjlist"></datalist><section class="card stack" aria-labelledby="bank-h"><div class="row between"><div><h2 id="bank-h">Question bank (' + S.bank.length + ')</h2><p class="sub" id="bank-sum"></p></div><div class="row"><button class="btn btn-sm" type="button" data-act="samples">Add sample questions</button>' + (S.bank.length ? '<button class="btn btn-sm' + (S.confirm === 'all' ? ' btn-danger' : '') + '" type="button" data-act="delall">' + (S.confirm === 'all' ? 'Confirm: delete all ' + S.bank.length : 'Delete all') + '</button>' : '') + '</div></div>';
-  if (S.bank.length) h += '<div class="grid2"><div><label class="lbl" for="bsearch">Search</label><input id="bsearch" type="text" value="' + esc(S.q) + '" placeholder="Search questions or subjects"></div><div><label class="lbl" for="bsubj">Show subject</label><select id="bsubj"></select></div></div>';
+  if (S.bank.length) h += '<div class="grid2"><div><label class="lbl" for="bsearch">Search</label><input id="bsearch" type="text" value="' + esc(S.q) + '" placeholder="Search questions or subjects"></div><div><label class="lbl" for="bsubj">Show subject</label><select id="bsubj"></select></div></div><label class="check" for="bcopies"><input id="bcopies" type="checkbox"' + (S.bcopies ? ' checked' : '') + '> Only show questions that have copies or similar questions</label>';
   h += '<div id="banklist"></div></section></div>';
   return h;
+}
+
+function snip(t, n) { return t.length > n ? t.slice(0, n) + '...' : t; }
+
+function copyList(rows) {
+  var shown = rows.slice(0, 200);
+  return '<div class="copylist" style="max-height:340px;overflow:auto;margin-top:8px">' + shown.map(function (r, i) {
+    var seen = {}, ps = [];
+    r.nbs.forEach(function (n) { if (!seen[n.t]) { seen[n.t] = 1; ps.push(n.t + (n.t === r.t ? ' (same paper)' : '')); } });
+    var top = r.nbs.slice(0, 2).map(function (n) { return '<div class="sub">' + (n.exact ? 'Exact copy' : 'Similar') + ' to "' + esc(snip(n.q, 110)) + '" (' + esc(n.t) + ')</div>'; }).join('');
+    return '<div class="qrow"><span class="qn">' + (i + 1) + '</span><div class="qt">' + esc(snip(r.q, 160)) + '<div class="sub" style="margin-top:4px">This one: <strong>' + esc(r.t) + '</strong> · Also in: ' + esc(ps.sort().join(', ')) + '</div>' + top + '</div></div>';
+  }).join('') + (rows.length > shown.length ? '<p class="sub" style="margin-top:8px">and ' + (rows.length - shown.length) + ' more</p>' : '') + '</div>';
+}
+
+function renderCopyReport() {
+  var el = $('#copyreport'); if (!el) return;
+  var c = S.copyReport;
+  if (!c) { el.innerHTML = ''; return; }
+  el.innerHTML = '<section class="card stack" aria-labelledby="copy-h"><div class="row between"><div><h2 id="copy-h">Copies found in your last upload</h2><p class="sub">' + c.rows.length + ' of the ' + c.added + ' questions you added look like ' + (c.rows.length === 1 ? 'a copy' : 'copies') + ' of questions already in the bank (exact, or the same question asked in a different way). They were added anyway. Here is which paper each one is also in.</p></div><button class="btn btn-sm" type="button" data-act="copyclose">Dismiss</button></div>' + copyList(c.rows) + '</section>';
 }
 
 function importSummary(items) {
@@ -671,13 +823,15 @@ function renderSubjPanel() {
   var el = $('#subjpanel'); if (!el) return;
   var su = subjects(), keys = Object.keys(su).sort();
   if (!keys.length) { el.innerHTML = '<div><h2 id="subj-h">Subjects</h2><p class="sub">Subjects appear here once you add questions.</p></div>'; return; }
-  var h = '<div><h2 id="subj-h">Subjects</h2><p class="sub">Rename a subject to change it on every question in it. A name that already exists merges the two. Friends\' old results keep the old name in their subject breakdown.</p></div><div>';
+  var h = '<div><h2 id="subj-h">Subjects</h2><p class="sub">Rename a subject to change it on every question in it. A name that already exists merges the two. Delete removes the subject and every question in it. Friends\' old results keep the old name in their subject breakdown.</p></div><div>';
   keys.forEach(function (k) {
     var r = S.ren;
     if (r && r.from === k) {
       h += '<div class="qrow"><div class="qt"><label class="lbl" for="rename-to">New name for "' + esc(k) + '" (' + su[k] + ' questions)</label><input id="rename-to" type="text" list="subjlist" autocomplete="off" value="' + esc(r.to) + '"><p class="sub" id="rename-note" style="margin-top:6px">' + esc(renNote()) + '</p></div><div class="row"><button class="btn btn-primary btn-sm" type="button" data-act="rensave"' + (S.busy ? ' disabled' : '') + '>Save name</button><button class="btn btn-sm" type="button" data-act="rencancel">Cancel</button></div></div>';
+    } else if (S.confirm === 's:' + k) {
+      h += '<div class="qrow" style="display:block"><div class="notice warn"><strong>Delete "' + esc(k) + '" and all ' + su[k] + ' question' + (su[k] === 1 ? '' : 's') + ' in it?</strong><p class="sub" style="margin:4px 0 10px">This cannot be undone. Friends\' saved scores stay, but when they review old papers these questions will show as removed. Export a CSV from Supabase first if you want a backup.</p><div class="row"><button class="btn btn-danger btn-sm" type="button" data-act="delsubjyes" data-k="' + esc(k) + '"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Deleting...' : 'Yes, delete ' + su[k] + ' question' + (su[k] === 1 ? '' : 's')) + '</button><button class="btn btn-sm" type="button" data-act="delsubjno">Cancel</button></div></div></div>';
     } else {
-      h += '<div class="qrow"><div class="qt"><strong>' + esc(k) + '</strong> <span class="sub">' + su[k] + ' question' + (su[k] === 1 ? '' : 's') + '</span></div><button class="btn btn-sm" type="button" data-act="ren" data-k="' + esc(k) + '">Rename</button></div>';
+      h += '<div class="qrow"><div class="qt"><strong>' + esc(k) + '</strong> <span class="sub">' + su[k] + ' question' + (su[k] === 1 ? '' : 's') + '</span></div><div class="row" style="flex:none"><button class="btn btn-sm" type="button" data-act="ren" data-k="' + esc(k) + '">Rename</button><button class="btn btn-sm" type="button" data-act="delsubj" data-k="' + esc(k) + '">Delete subject</button></div></div>';
     }
   });
   el.innerHTML = h + '</div>';
@@ -706,21 +860,31 @@ function renderBankList() {
   var f = norm(S.q), sf = S.bsub;
   var list = S.bank.map(function (q, i) { return { q: q, i: i }; }).filter(function (r) {
     if (sf && (r.q.t || 'Untagged') !== sf) return false;
+    if (S.bcopies && !neighborsOf(r.q.id).length) return false;
     return !f || norm(r.q.q + ' ' + (r.q.t || '')).indexOf(f) >= 0;
   });
   var shown = list.slice(0, 100);
   var h = shown.map(function (r) {
     var q = r.q, k = 'q:' + q.id, c = S.confirm === k;
     if (S.editId === q.id && S.ed) return editForm();
-    return '<div class="qrow"><span class="qn">' + (r.i + 1) + '</span><div class="qt">' + esc(q.q.length > 200 ? q.q.slice(0, 200) + '...' : q.q) + '<div class="row" style="margin-top:4px;gap:6px">' + (q.t ? '<span class="pill subj">' + esc(q.t) + '</span>' : '') + '<span class="sub">Answer ' + LET[q.a] + ' · ' + q.o.length + ' options</span></div></div><div class="row" style="flex:none"><button class="btn btn-sm" type="button" data-act="edit" data-id="' + esc(q.id) + '">Edit</button><button class="btn btn-sm' + (c ? ' btn-danger' : '') + '" type="button" data-act="delq" data-id="' + esc(q.id) + '">' + (c ? 'Confirm' : 'Delete') + '</button></div></div>';
+    var al = alsoIn(q, true), cpill = '';
+    if (al.length) cpill = '<span class="pill flag">' + (neighborsOf(q.id).some(function (n) { return n.exact; }) ? 'Copy' : 'Similar') + ' · also in ' + esc(al.join(', ')) + '</span>';
+    return '<div class="qrow"><span class="qn">' + (r.i + 1) + '</span><div class="qt">' + esc(q.q.length > 200 ? q.q.slice(0, 200) + '...' : q.q) + '<div class="row" style="margin-top:4px;gap:6px">' + (q.t ? '<span class="pill subj">' + esc(q.t) + '</span>' : '') + cpill + '<span class="sub">Answer ' + LET[q.a] + ' · ' + q.o.length + ' options</span></div></div><div class="row" style="flex:none"><button class="btn btn-sm" type="button" data-act="edit" data-id="' + esc(q.id) + '">Edit</button><button class="btn btn-sm' + (c ? ' btn-danger' : '') + '" type="button" data-act="delq" data-id="' + esc(q.id) + '">' + (c ? 'Confirm' : 'Delete') + '</button></div></div>';
   }).join('');
   if (!list.length) h = '<p class="sub">No questions match.</p>';
   if (list.length > shown.length) h += '<p class="sub" style="margin-top:10px">Showing the first ' + shown.length + ' of ' + list.length + ' matches. Search or pick a subject to narrow it down.</p>';
   el.innerHTML = h;
 }
 
+/* Shown under a question while practising and in reviews: other papers that have the same or a very similar question. */
+function alsoLine(q) {
+  var a = alsoIn(q, false);
+  return a.length ? '<p class="also">Also in: ' + esc(a.join(', ')) + '</p>' : '';
+}
+
 function renderManageParts() {
   var hh = $('#bank-h'); if (hh) hh.textContent = 'Question bank (' + S.bank.length + ')';
+  renderCopyReport();
   renderSubjPanel();
   renderBankList();
 }
@@ -747,7 +911,7 @@ function examView() {
   }).join('');
   var done = Object.keys(ex.ans).length;
   var h = examBar(ex, '<button type="button" class="btn btn-primary" data-act="finish">Finish exam</button>');
-  h += '<div class="exam-grid"><section class="card" aria-label="Question"><div class="qhead"><strong>Question ' + (ex.i + 1) + ' of ' + ex.qids.length + '</strong><span>' + done + ' answered</span></div><p class="stem">' + nl(q.q) + '</p><div class="opts" role="radiogroup" aria-label="Options">' + opts + '</div>';
+  h += '<div class="exam-grid"><section class="card" aria-label="Question"><div class="qhead"><strong>Question ' + (ex.i + 1) + ' of ' + ex.qids.length + '</strong><span>' + done + ' answered</span></div><p class="stem">' + nl(q.q) + '</p><div class="opts" role="radiogroup" aria-label="Options">' + opts + '</div>' + alsoLine(q);
   h += '<div class="qnav"><button type="button" class="btn" data-act="prev"' + (ex.i === 0 ? ' disabled' : '') + '>Previous</button><button type="button" class="btn" data-act="next"' + (ex.i === ex.qids.length - 1 ? ' disabled' : '') + '>Next</button><span class="grow"></span><button type="button" class="btn' + (ex.flag[id] ? ' flagged' : '') + '" data-act="flag" aria-pressed="' + !!ex.flag[id] + '">' + (ex.flag[id] ? 'Flagged for review' : 'Flag for review') + '</button><button type="button" class="btn" data-act="clear"' + (sel == null ? ' disabled' : '') + '>Clear answer</button></div>';
   h += '<p class="sub" style="margin-top:12px">Keys: A to E pick an option, arrow keys or N and P move, F flags.</p></section>';
   h += '<aside class="card" aria-label="Question palette"><h3 style="margin-bottom:10px">Question palette</h3>' + palette(ex, true) + '</aside></div>';
@@ -778,6 +942,7 @@ function reviewItem(a, id, n, M) {
     return '<div class="ro' + cls + '"><span class="k">' + LET[i] + '</span><span class="t">' + esc(o) + '</span>' + (tag ? '<span class="tag">' + tag + '</span>' : '') + '</div>';
   }).join('');
   if (q.e) h += '<div class="exp"><strong>Explanation.</strong> ' + nl(q.e) + '</div>';
+  h += alsoLine(q);
   return h + '</div>';
 }
 
@@ -897,7 +1062,10 @@ var A = {
   samples: function () {
     if (S.busy) return;
     S.busy = true;
-    addQuestions(SAMPLES).then(function (r) {
+    var haveS = {}; S.bank.forEach(function (q) { haveS[dupKey(q.q, q.o)] = 1; });
+    var freshS = SAMPLES.filter(function (x) { return !haveS[dupKey(x.q, x.o)]; });
+    if (!freshS.length) { S.busy = false; toast('The sample questions are already in the bank.'); return; }
+    addQuestions(freshS).then(function (r) {
       S.busy = false;
       if (!r.added.length) { toast('The sample questions are already in the bank.'); return; }
       S.bank = S.bank.concat(r.added); toast(r.added.length + ' sample questions added.'); render();
@@ -950,6 +1118,7 @@ var A = {
   check: function () {
     S.imp.text = $('#imptext').value; S.imp.tag = $('#imptag').value.trim();
     S.imp.parsed = parseMCQ(S.imp.text, S.imp.tag);
+    S.imp.sim = S.imp.parsed.items.length ? simNew(S.imp.parsed.items) : [];
     if (!S.imp.text.trim()) toast('Paste some questions first.');
     render();
   },
@@ -959,7 +1128,8 @@ var A = {
     addQuestions(pr.items).then(function (r) {
       S.busy = false; S.bank = S.bank.concat(r.added);
       S.imp = { text: '', tag: '', parsed: null };
-      toast(r.added.length + ' added' + (r.dup ? ', ' + r.dup + ' duplicate' + (r.dup === 1 ? '' : 's') + ' skipped' : '') + '.');
+      S.copyReport = r.copies.length ? { added: r.added.length, rows: r.copies } : null;
+      toast(r.added.length + ' added' + (r.copies.length ? '. ' + r.copies.length + ' of them ' + (r.copies.length === 1 ? 'is a copy' : 'are copies') + ' of existing questions, see the list below.' : '.'));
       render();
     }).catch(function (e) { S.busy = false; toast('Could not add questions: ' + errText(e)); render(); });
   },
@@ -987,6 +1157,27 @@ var A = {
     renderBankList();
     var el = $('#ed-q'); if (el) { el.focus(); if (el.scrollIntoView) el.scrollIntoView({ block: 'center' }); }
   },
+  delsubj: function (t) { S.confirm = 's:' + t.dataset.k; S.ren = null; renderSubjPanel(); },
+  delsubjno: function () { S.confirm = ''; renderSubjPanel(); },
+  delsubjyes: function (t) {
+    if (S.busy) return;
+    var k = t.dataset.k, oldVal = k === 'Untagged' ? '' : k;
+    S.busy = true; renderSubjPanel();
+    sb.from('questions').delete().eq('subject', oldVal).select('id').then(function (res) {
+      S.busy = false;
+      if (res.error) { toast('Could not delete: ' + errText(res.error)); renderSubjPanel(); return; }
+      if (!res.data || !res.data.length) { toast('No questions were deleted. You may not have permission.'); S.confirm = ''; renderSubjPanel(); return; }
+      var gone = {}; res.data.forEach(function (r) { gone[r.id] = 1; });
+      S.bank = S.bank.filter(function (q) { return !gone[q.id]; });
+      var st = S.setup; st.subj = st.subj.filter(function (x) { return x !== k; }); st.count = null;
+      if (S.bsub === k) S.bsub = '';
+      if (S.editId && gone[S.editId]) { S.editId = null; S.ed = null; }
+      S.confirm = '';
+      toast('Deleted "' + k + '" and its ' + res.data.length + ' question' + (res.data.length === 1 ? '' : 's') + '.');
+      renderManageParts();
+    });
+  },
+  copyclose: function () { S.copyReport = null; renderCopyReport(); },
   edcancel: function () { S.editId = null; S.ed = null; renderBankList(); },
   edaddopt: function () { if (S.ed && S.ed.o.length < 6) { S.ed.o.push(''); renderBankList(); var el = $('#ed-o-' + (S.ed.o.length - 1)); if (el) el.focus(); } },
   edremopt: function (t) {
@@ -1003,8 +1194,6 @@ var A = {
     d.o.forEach(function (o, i) { var tx = o.trim(); if (tx) { if (i === d.a) map = opts.length; opts.push(tx); } });
     if (opts.length < 2) { toast('Keep at least 2 options with text.'); return; }
     if (map < 0) { toast('Select the correct answer, and make sure that option has text.'); return; }
-    var mine = dupKey(stem, opts);
-    if (S.bank.some(function (x) { return x.id !== id && dupKey(x.q, x.o) === mine; })) { toast('Another question is an exact copy of this one (same text and same options).'); return; }
     S.busy = true; renderBankList();
     sb.from('questions').update({ subject: d.t.trim(), stem: stem, options: opts, answer: map, explanation: d.e.trim() }).eq('id', id).select().then(function (r) {
       S.busy = false;
@@ -1012,7 +1201,10 @@ var A = {
       if (!r.data || !r.data.length) { toast('You do not have permission to edit questions.'); renderBankList(); return; }
       var nq = fromQ(r.data[0]);
       S.bank = S.bank.map(function (x) { return x.id === id ? nq : x; });
-      S.editId = null; S.ed = null; toast('Question saved.'); renderManageParts();
+      S.editId = null; S.ed = null;
+      var al = alsoIn(nq, true);
+      toast('Question saved.' + (al.length ? ' Identical or similar questions are also in: ' + al.join(', ') + '.' : ''));
+      renderManageParts();
     });
   },
   ren: function (t) {
@@ -1080,6 +1272,7 @@ app.addEventListener('change', function (e) {
   else if (t.id === 'sho') st.sho = t.checked;
   else if (t.id === 'selmode') { st.mode = t.value; render(); }
   else if (t.id === 'bsubj') { S.bsub = t.value; renderBankList(); }
+  else if (t.id === 'bcopies') { S.bcopies = t.checked; renderBankList(); }
   else if (t.name === 'ed-a' && S.ed) { S.ed.a = Number(t.value); }
   else if (t.dataset && t.dataset.subj != null) {
     var k = t.dataset.subj, i = st.subj.indexOf(k);
