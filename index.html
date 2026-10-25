@@ -207,6 +207,9 @@ tr.me td { background: var(--accent-soft); }
 .ro.wrong { background: var(--bad-soft); border-color: var(--bad); }
 .ro.wrong .tag { color: var(--bad); }
 .also { margin: 14px 0 0; padding-top: 10px; border-top: 1px dashed var(--line); font-size: .84rem; color: var(--muted); }
+.fopen { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--accent); cursor: pointer; text-align: left; }
+.fopen:hover { text-decoration: underline; }
+.crumbs { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; font-size: .9rem; }
 .exp { margin-top: 12px; padding: 10px 12px; background: var(--surface2); border-radius: 6px; font-size: .9rem; overflow-wrap: anywhere; }
 
 .help pre { margin: 0; padding: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; overflow-x: auto; font-family: var(--mono); font-size: .82rem; line-height: 1.55; }
@@ -348,7 +351,7 @@ function freshState() {
     setup: { count: null, minutes: null, touched: false, subj: [], shq: true, sho: false, mode: 'unseen' },
     imp: { text: '', tag: '', parsed: null },
     q: '', confirm: '', confirmSubmit: false,
-    editId: null, ed: null, ren: null, bsub: '', copyReport: null, bcopies: false
+    editId: null, ed: null, ren: null, bsub: '', copyReport: null, bcopies: false, fp: '', fnew: false, fren: null, fmove: null
   };
 }
 function resetUser() {
@@ -519,6 +522,7 @@ function simNew(items) {
 //#sim-end
 
 function addQuestions(items) {
+  items.forEach(function (it) { it.t = normPath(it.t); });
   var copies = simNew(items);
   var added = [], p = Promise.resolve();
   for (var i = 0; i < items.length; i += 200) {
@@ -751,7 +755,7 @@ function leaderboardView() {
 }
 
 function manageView() {
-  var h = '<div class="stack"><section class="card stack" aria-labelledby="add-h"><div><h2 id="add-h">Add questions</h2><p class="sub">Only admins see this page. Paste MCQs below, check the format, then add them for everyone. Copies and near-copies (the same question asked in a different way) are added too. Check format tells you how many look like copies. After adding, you get a list of which paper each one is also in.</p></div>';
+  var h = '<div class="stack"><section class="card stack" id="folderpanel" aria-labelledby="fold-h"></section><section class="card stack" aria-labelledby="add-h"><div><h2 id="add-h">Add questions</h2><p class="sub">Only admins see this page. Paste MCQs below, check the format, then add them for everyone. Copies and near-copies (the same question asked in a different way) are added too. Check format tells you how many look like copies. After adding, you get a list of which paper each one is also in.</p></div>';
   h += '<details class="help"><summary>Format help</summary><div class="stack" style="margin-top:12px"><p class="sub">One blank line between questions. Options start with A) to E) (or A. to E.). Each question needs an Answer line. Explanation and Subject lines are optional. You can also mark the right option with a * in front. JSON is accepted too.</p><pre>' + esc(FORMAT_EXAMPLE) + '</pre><div><span class="lbl">Prompt to convert messy MCQs into this format</span><textarea class="ro-box" id="aiprompt" readonly>' + esc(AI_PROMPT) + '</textarea><div class="row" style="margin-top:8px"><button class="btn btn-sm" type="button" data-act="copyprompt">Copy prompt</button></div></div></div></details>';
   h += '<div><label class="lbl" for="imptag">Subject for questions without one (optional)</label><input id="imptag" type="text" list="subjlist" autocomplete="off" value="' + esc(S.imp.tag) + '" placeholder="e.g. Physiology"></div>';
   h += '<div><label class="lbl" for="imptext">Questions</label><textarea id="imptext" spellcheck="false" placeholder="1. Question text&#10;A) option&#10;B) option&#10;C) option&#10;D) option&#10;Answer: B&#10;Explanation: optional">' + esc(S.imp.text) + '</textarea></div>';
@@ -876,6 +880,109 @@ function renderBankList() {
   el.innerHTML = h;
 }
 
+
+/* ---- Folders ----
+   "1st Year / Block A / CVS Physiology" is stored in the subject text itself, so folders need no database change.
+   A folder exists while some subject sits under it. An empty folder you create is remembered on this device only
+   until you add a paper into it. */
+var SEP = ' / ';
+function normPath(s) { return String(s || '').split('/').map(function (x) { return x.trim().replace(/\s+/g, ' '); }).filter(Boolean).join(SEP); }
+function pathSegs(p) { return p ? p.split(SEP) : []; }
+function under(k, full) { return !full || k === full || k.indexOf(full + SEP) === 0; }
+function remap(k, full, nf) { return k === full ? nf : nf + k.slice(full.length); }
+function phList() { var a = LS.get('flp.folders', []); return Array.isArray(a) ? a.filter(function (x) { return typeof x === 'string' && x; }) : []; }
+function phSave(a) { LS.set('flp.folders', a.filter(function (x, i) { return a.indexOf(x) === i; })); }
+function nat(a, b) { return a.localeCompare(b, undefined, { numeric: true }); }
+function folderEntries() {
+  var su = subjects(), keys = Object.keys(su), out = keys.map(function (k) { return { key: k, n: su[k], ph: false }; });
+  phList().forEach(function (k) {
+    if (!keys.some(function (r) { return under(r, k); })) out.push({ key: k, n: 0, ph: true });
+  });
+  return out;
+}
+function realKeysUnder(full) { return Object.keys(subjects()).filter(function (k) { return k !== 'Untagged' && under(k, full); }); }
+function folderChildren(fp) {
+  var P = pathSegs(fp), kids = {};
+  folderEntries().forEach(function (e) {
+    var sg = pathSegs(e.key);
+    if (!under(e.key, fp) || sg.length <= P.length) return;
+    var nm = sg[P.length], c = kids[nm] || (kids[nm] = { name: nm, full: P.concat(nm).join(SEP), n: 0, folder: false });
+    c.n += e.n;
+    if (sg.length > P.length + 1 || e.ph) c.folder = true;
+  });
+  return Object.keys(kids).sort(nat).map(function (k) { return kids[k]; });
+}
+function allFolderPaths() {
+  var seen = {};
+  folderEntries().forEach(function (e) {
+    var sg = pathSegs(e.key), n = e.ph ? sg.length : sg.length - 1;
+    for (var i = 1; i <= n; i++) seen[sg.slice(0, i).join(SEP)] = 1;
+  });
+  return Object.keys(seen).sort(nat);
+}
+function renderFolderPanel() {
+  var el = $('#folderpanel'); if (!el) return;
+  var fp = S.fp, P = pathSegs(fp), kids = folderChildren(fp);
+  var crumbs = '<button type="button" class="fopen" data-act="fgo" data-p="">All folders</button>';
+  P.forEach(function (seg, i) { crumbs += ' <span class="sub">&rsaquo;</span> <button type="button" class="fopen" data-act="fgo" data-p="' + esc(P.slice(0, i + 1).join(SEP)) + '">' + esc(seg) + '</button>'; });
+  var h = '<div class="row between"><div><h2 id="fold-h">Folders</h2><p class="sub">Organise your papers like folders, for example 1st Year, then Block A, then CVS Physiology. Open a folder to go inside it.</p></div><div class="row"><button class="btn btn-sm" type="button" data-act="fnew">New folder here</button><button class="btn btn-sm btn-primary" type="button" data-act="fhere">Add questions here</button></div></div>';
+  h += '<div class="crumbs" aria-label="Current folder">' + crumbs + '</div>';
+  if (S.fnew) h += '<div class="row" style="align-items:flex-end"><div style="flex:1;min-width:200px"><label class="lbl" for="fnew-name">Name of the new folder' + (fp ? ' inside "' + esc(P[P.length - 1]) + '"' : '') + '</label><input id="fnew-name" type="text" autocomplete="off" placeholder="e.g. 1st Year, Block A, Anatomy"></div><button class="btn btn-primary btn-sm" type="button" data-act="fnewsave">Create folder</button><button class="btn btn-sm" type="button" data-act="fnewcancel">Cancel</button></div>';
+  if (!kids.length) {
+    h += '<p class="sub">' + (fp ? 'This folder is empty. Use "New folder here" for a sub-folder, or "Add questions here" and type a paper name after the folder path.' : 'No folders yet. Press "New folder here" and create 1st Year, then open it to create Block A inside.') + '</p>';
+  }
+  var dests = null;
+  kids.forEach(function (c) {
+    var cnt = '<span class="sub">' + c.n + ' question' + (c.n === 1 ? '' : 's') + '</span>';
+    var locked = c.name === 'Untagged' && !fp;
+    if (S.fren === c.full) {
+      h += '<div class="qrow"><div class="qt"><label class="lbl" for="fren-to">New name for "' + esc(c.name) + '"</label><input id="fren-to" type="text" autocomplete="off" value="' + esc(c.name) + '"></div><div class="row"><button class="btn btn-primary btn-sm" type="button" data-act="frensave"' + (S.busy ? ' disabled' : '') + '>Save name</button><button class="btn btn-sm" type="button" data-act="frencancel">Cancel</button></div></div>';
+    } else if (S.fmove === c.full) {
+      dests = allFolderPaths().filter(function (d) { return !under(d, c.full); });
+      h += '<div class="qrow"><div class="qt"><label class="lbl" for="fmove-to">Move "' + esc(c.name) + '" into</label><select id="fmove-to"><option value="">All folders (top level)</option>' + dests.map(function (d) { return '<option value="' + esc(d) + '">' + esc(d) + '</option>'; }).join('') + '</select></div><div class="row"><button class="btn btn-primary btn-sm" type="button" data-act="fmovesave"' + (S.busy ? ' disabled' : '') + '>Move</button><button class="btn btn-sm" type="button" data-act="fmovecancel">Cancel</button></div></div>';
+    } else if (S.confirm === 'f:' + c.full) {
+      var nk = realKeysUnder(c.full).length;
+      h += '<div class="qrow" style="display:block"><div class="notice warn"><strong>Delete "' + esc(c.name) + '"' + (c.n ? ' and all ' + c.n + ' question' + (c.n === 1 ? '' : 's') + (nk > 1 ? ' in its ' + nk + ' papers' : '') : '') + '?</strong><p class="sub" style="margin:4px 0 10px">This cannot be undone. Friends\' saved scores stay, but old reviews will show these questions as removed.</p><div class="row"><button class="btn btn-danger btn-sm" type="button" data-act="fdelyes" data-p="' + esc(c.full) + '"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Deleting...' : 'Yes, delete') + '</button><button class="btn btn-sm" type="button" data-act="fdelno">Cancel</button></div></div></div>';
+    } else {
+      h += '<div class="qrow"><div class="qt"><button type="button" class="fopen" data-act="' + (c.folder ? 'fgo' : 'fpaper') + '" data-p="' + esc(c.full) + '">' + esc(c.name) + '</button> <span class="pill ' + (c.folder ? 'flag' : 'subj') + '">' + (c.folder ? 'Folder' : 'Paper') + '</span> ' + cnt + '</div><div class="row" style="flex:none">' + (locked ? '' : '<button class="btn btn-sm" type="button" data-act="fren" data-p="' + esc(c.full) + '">Rename</button><button class="btn btn-sm" type="button" data-act="fmove" data-p="' + esc(c.full) + '">Move</button>') + '<button class="btn btn-sm" type="button" data-act="fdel" data-p="' + esc(c.full) + '">Delete</button></div></div>';
+    }
+  });
+  if (kids.some(function (c) { return !c.folder && c.name !== 'Untagged'; })) h += '<p class="sub">Click a paper name to see its questions in the bank below.</p>';
+  el.innerHTML = h;
+}
+
+/* Rename or move a folder or paper: every subject under it gets the new path. */
+function folderMove(full, nf, done) {
+  var keys = realKeysUnder(full), pairs = keys.map(function (k) { return { from: k, to: remap(k, full, nf) }; }), moved = 0, i = 0, failed = null;
+  function finish() {
+    var ph = phList().map(function (k) { return under(k, full) ? remap(k, full, nf) : k; });
+    phSave(ph);
+    var st = S.setup;
+    st.subj = st.subj.map(function (k) { return under(k, full) ? remap(k, full, nf) : k; }).filter(function (k, j, a) { return a.indexOf(k) === j; });
+    st.count = null;
+    if (S.bsub && under(S.bsub, full)) S.bsub = remap(S.bsub, full, nf);
+    if (S.fp && under(S.fp, full)) S.fp = remap(S.fp, full, nf);
+    done(failed, moved);
+  }
+  (function next() {
+    if (i >= pairs.length) { finish(); return; }
+    var pr = pairs[i++];
+    sb.from('questions').update({ subject: pr.to }).eq('subject', pr.from).select('id').then(function (res) {
+      if (res.error) { failed = errText(res.error); finish(); return; }
+      if (!res.data || !res.data.length) { failed = 'No questions were changed. You may not have permission.'; finish(); return; }
+      S.bank.forEach(function (q) { if ((q.t || '') === pr.from) q.t = pr.to; });
+      moved += res.data.length; next();
+    });
+  })();
+}
+function folderDone(msg) {
+  return function (failed, moved) {
+    S.busy = false; S.fren = null; S.fmove = null; S.confirm = '';
+    toast(failed ? 'Stopped: ' + failed + (moved ? ' (' + moved + ' already changed)' : '') : msg(moved));
+    renderManageParts();
+  };
+}
+
 /* Shown under a question while practising and in reviews: other papers that have the same or a very similar question. */
 function alsoLine(q) {
   var a = alsoIn(q, false);
@@ -885,6 +992,7 @@ function alsoLine(q) {
 function renderManageParts() {
   var hh = $('#bank-h'); if (hh) hh.textContent = 'Question bank (' + S.bank.length + ')';
   renderCopyReport();
+  renderFolderPanel();
   renderSubjPanel();
   renderBankList();
 }
@@ -1116,7 +1224,7 @@ var A = {
     });
   },
   check: function () {
-    S.imp.text = $('#imptext').value; S.imp.tag = $('#imptag').value.trim();
+    S.imp.text = $('#imptext').value; S.imp.tag = normPath($('#imptag').value);
     S.imp.parsed = parseMCQ(S.imp.text, S.imp.tag);
     S.imp.sim = S.imp.parsed.items.length ? simNew(S.imp.parsed.items) : [];
     if (!S.imp.text.trim()) toast('Paste some questions first.');
@@ -1177,6 +1285,88 @@ var A = {
       renderManageParts();
     });
   },
+  fgo: function (t) { S.fp = t.dataset.p || ''; S.fnew = false; S.fren = null; S.fmove = null; S.confirm = ''; renderFolderPanel(); },
+  fpaper: function (t) {
+    S.bsub = t.dataset.p; renderBankList();
+    var b = $('#bank-h'); if (b && b.scrollIntoView) b.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    toast('Showing the questions in "' + t.dataset.p + '" in the bank below.');
+  },
+  fnew: function () { S.fnew = true; S.fren = null; S.fmove = null; renderFolderPanel(); var el = $('#fnew-name'); if (el) el.focus(); },
+  fnewcancel: function () { S.fnew = false; renderFolderPanel(); },
+  fnewsave: function () {
+    var el = $('#fnew-name'), name = normPath(el ? el.value : '');
+    if (!name) { toast('Type a name for the folder.'); return; }
+    var full = S.fp ? S.fp + SEP + name : name;
+    phSave(phList().concat(full));
+    S.fnew = false; toast('Folder "' + name + '" created. Open it to put papers or sub-folders inside.');
+    renderFolderPanel();
+  },
+  fhere: function () {
+    var el = $('#imptag'); if (!el) return;
+    S.imp.tag = S.fp ? S.fp + SEP : ''; el.value = S.imp.tag;
+    el.focus(); try { el.setSelectionRange(el.value.length, el.value.length); } catch (e) { /* ignore */ }
+    if (el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    toast(S.fp ? 'Type the paper name after the folder path, then paste your questions.' : 'Type the full path, like 1st Year / Block A / CVS Physiology.');
+  },
+  fren: function (t) { S.fren = t.dataset.p; S.fmove = null; S.confirm = ''; renderFolderPanel(); var el = $('#fren-to'); if (el) { el.focus(); el.select(); } },
+  frencancel: function () { S.fren = null; renderFolderPanel(); },
+  frensave: function () {
+    var full = S.fren; if (!full || S.busy) return;
+    var el = $('#fren-to'), raw = el ? el.value : '';
+    if (raw.indexOf('/') >= 0) { toast('A name cannot contain "/". Use Move to put it inside another folder.'); return; }
+    var to = normPath(raw);
+    if (!to) { toast('Type the new name.'); return; }
+    if (to === 'Untagged') { toast('Pick a different name. Untagged is reserved.'); return; }
+    var sg = pathSegs(full), nf = sg.slice(0, -1).concat(to).join(SEP);
+    if (nf === full) { toast('That is the same name.'); return; }
+    S.busy = true; renderFolderPanel();
+    folderMove(full, nf, folderDone(function (n) { return 'Renamed to "' + to + '"' + (n ? ' (' + n + ' question' + (n === 1 ? '' : 's') + ' updated).' : '.'); }));
+  },
+  fmove: function (t) { S.fmove = t.dataset.p; S.fren = null; S.confirm = ''; renderFolderPanel(); },
+  fmovecancel: function () { S.fmove = null; renderFolderPanel(); },
+  fmovesave: function () {
+    var full = S.fmove; if (!full || S.busy) return;
+    var el = $('#fmove-to'), dest = el ? el.value : '', name = pathSegs(full).pop(), nf = dest ? dest + SEP + name : name;
+    if (under(dest, full) && dest) { toast('A folder cannot be moved inside itself.'); return; }
+    if (nf === full) { toast('It is already there.'); return; }
+    S.busy = true; renderFolderPanel();
+    folderMove(full, nf, folderDone(function () { return 'Moved "' + name + '" into ' + (dest ? '"' + dest + '"' : 'the top level') + '.'; }));
+  },
+  fdel: function (t) {
+    var full = t.dataset.p;
+    if (!realKeysUnder(full).length && full !== 'Untagged') {
+      phSave(phList().filter(function (k) { return !under(k, full); }));
+      if (under(S.fp, full)) S.fp = pathSegs(full).slice(0, -1).join(SEP);
+      toast('Empty folder removed.'); renderFolderPanel(); return;
+    }
+    S.confirm = 'f:' + full; S.fren = null; S.fmove = null; renderFolderPanel();
+  },
+  fdelno: function () { S.confirm = ''; renderFolderPanel(); },
+  fdelyes: function (t) {
+    if (S.busy) return;
+    var full = t.dataset.p, keys = full === 'Untagged' ? ['Untagged'] : realKeysUnder(full), i = 0, removed = 0, failed = null;
+    S.busy = true; renderFolderPanel();
+    function finish() {
+      S.busy = false; S.confirm = '';
+      var st = S.setup; st.subj = st.subj.filter(function (k) { return !under(k, full); }); st.count = null;
+      if (S.bsub && under(S.bsub, full)) S.bsub = '';
+      if (S.editId && !S.bank.some(function (q) { return q.id === S.editId; })) { S.editId = null; S.ed = null; }
+      if (!failed) { phSave(phList().filter(function (k) { return !under(k, full); })); if (under(S.fp, full)) S.fp = pathSegs(full).slice(0, -1).join(SEP); }
+      toast(failed ? 'Stopped: ' + failed + (removed ? ' (' + removed + ' already deleted)' : '') : 'Deleted "' + pathSegs(full).pop() + '" and its ' + removed + ' question' + (removed === 1 ? '' : 's') + '.');
+      renderManageParts();
+    }
+    (function next() {
+      if (i >= keys.length) { finish(); return; }
+      var k = keys[i++];
+      sb.from('questions').delete().eq('subject', k === 'Untagged' ? '' : k).select('id').then(function (res) {
+        if (res.error) { failed = errText(res.error); finish(); return; }
+        if (!res.data || !res.data.length) { failed = 'No questions were deleted. You may not have permission.'; finish(); return; }
+        var gone = {}; res.data.forEach(function (r) { gone[r.id] = 1; });
+        S.bank = S.bank.filter(function (q) { return !gone[q.id]; });
+        removed += res.data.length; next();
+      });
+    })();
+  },
   copyclose: function () { S.copyReport = null; renderCopyReport(); },
   edcancel: function () { S.editId = null; S.ed = null; renderBankList(); },
   edaddopt: function () { if (S.ed && S.ed.o.length < 6) { S.ed.o.push(''); renderBankList(); var el = $('#ed-o-' + (S.ed.o.length - 1)); if (el) el.focus(); } },
@@ -1195,7 +1385,7 @@ var A = {
     if (opts.length < 2) { toast('Keep at least 2 options with text.'); return; }
     if (map < 0) { toast('Select the correct answer, and make sure that option has text.'); return; }
     S.busy = true; renderBankList();
-    sb.from('questions').update({ subject: d.t.trim(), stem: stem, options: opts, answer: map, explanation: d.e.trim() }).eq('id', id).select().then(function (r) {
+    sb.from('questions').update({ subject: normPath(d.t), stem: stem, options: opts, answer: map, explanation: d.e.trim() }).eq('id', id).select().then(function (r) {
       S.busy = false;
       if (r.error) { toast('Could not save: ' + errText(r.error)); renderBankList(); return; }
       if (!r.data || !r.data.length) { toast('You do not have permission to edit questions.'); renderBankList(); return; }
@@ -1216,7 +1406,7 @@ var A = {
   rencancel: function () { S.ren = null; renderSubjPanel(); },
   rensave: function () {
     var r = S.ren; if (!r || S.busy) return;
-    var to = r.to.trim(), from = r.from;
+    var to = normPath(r.to), from = r.from;
     if (!to) { toast('Type the new name.'); return; }
     if (to === 'Untagged') { toast('Pick a different name. Untagged is reserved for questions without a subject.'); return; }
     if (to === from) { toast('That is the same name.'); return; }
